@@ -23,8 +23,6 @@ Build target support
 | x86_64-pc-windows-msvc | :heavy_check_mark: |
 | aarch64-linux-android  | :heavy_check_mark: |
 
-(WIP)
-
 Building
 ----------------------------
 An environment variable `LIVE2D_CUBISM_CORE_DIR` *MUST* be set that points to an existing Live2D Cubism SDK Core directory, e.g.
@@ -37,4 +35,16 @@ https://www.live2d.com/en/download/cubism-sdk/
 
 Usage
 ----------------------------
-(WIP)
+
+`Cargo.toml`:
+```toml
+[dependencies]
+live2d-cubism-core-sys = { git = "https://github.com/James2022-rgb/live2d-cubism-core-sys" }
+```
+
+Rust code:
+```rust
+unsafe {
+  live2d_cubism_core_sys::csmReviveMocInPlace(...);
+}
+```
