@@ -1,5 +1,5 @@
 [package]
-name = "live2d_cubism_core_sys"
+name = "live2d-cubism-core-sys"
 authors = ["https://github.com/James2022-rgb"]
 license = "MIT"
 version = "0.1.0"
