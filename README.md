@@ -1,4 +1,4 @@
-# Rust FFI bindings for Live2D® Cubism SDK Core
+# 🦀 Rust FFI bindings for Live2D® Cubism SDK Core
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -6,7 +6,7 @@ Low-level, unsafe Rust bindings to the Live2D Cubism SDK Core library, autogener
 
 License
 ----------------------------
-This crate is in no way endorsed, certified or otherwise approved by Live2D Inc., nor is its author affiliated with them.
+This Rust crate is in no way endorsed, certified or otherwise approved by Live2D Inc., nor is its author affiliated with them.
 
 By using this crate, and therefore Live2D Cubism Core, you agree to and accept the _Live2D Proprietary Software License Agreement_.
 
@@ -22,11 +22,11 @@ Build target support
 | ---------------------- | ------------------ |
 | x86_64-pc-windows-msvc | :heavy_check_mark: |
 | aarch64-linux-android  | :heavy_check_mark: |
-| wasm32-unknown-unknown | :construction:     |
+| wasm32-unknown-unknown | :construction: WIP |
 
 Building
 ----------------------------
-An enviroment variable *MUST* be set that that points to an existing Live2D Cubism SDK Core directory.
+An enviroment variable *MUST* be set that that points to an existing Live2D Cubism SDK Core directory, for _Native_ and _Web_, respetively:
 |        | Enviroment variable name     |
 | ------ | ---------------------------- |
 | Native | `LIVE2D_CUBISM_CORE_DIR`     |

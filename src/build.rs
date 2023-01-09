@@ -7,7 +7,15 @@ use std::{
 fn main() {
   assert!(cfg!(target_os = "windows"), "Building only supported on Windows.");
 
-  let cubism_core_dir = env::var("LIVE2D_CUBISM_CORE_DIR").expect("Environment variable LIVE2D_CUBISM_CORE_DIR not found !");
+  let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+  match target_arch.as_str() {
+    "wasm32" => handle_target_web(),
+    _ => handle_target_native()
+  };
+}
+
+fn handle_target_native() {
+  let cubism_core_dir = get_cubism_core_dir();
 
   const WRAPPER_HEADER: &str = "src/wrapper.h";
 
@@ -61,4 +69,19 @@ fn main() {
   bindings
     .write_to_file(out_dir.join("bindings.rs"))
     .expect("Failed to write bindings !");
+}
+
+fn handle_target_web() {
+  // let cubism_core_js_filepath = concat!(env!("LIVE2D_CUBISM_CORE_WEB_DIR"), "/live2dcubismcore.js");
+}
+
+fn get_cubism_core_dir() -> String {
+  let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+
+  let env_var_name = match target_arch.as_str() {
+    "wasm32" => "LIVE2D_CUBISM_CORE_WEB_DIR",
+    _ => "LIVE2D_CUBISM_CORE_DIR",
+  };
+
+  env::var("LIVE2D_CUBISM_CORE_DIR").unwrap_or_else(|err| panic!("Failed to get environment variable \"{env_var_name}\" ! {err:?}"))
 }
