@@ -26,16 +26,16 @@ Build target support
 
 Building
 ----------------------------
-An enviroment variable *MUST* be set that that points to an existing Live2D Cubism SDK Core directory, for _Native_ and _Web_, respetively:
-|        | Enviroment variable name     |
-| ------ | ---------------------------- |
-| Native | `LIVE2D_CUBISM_CORE_DIR`     |
-| Web    | `LIVE2D_CUBISM_CORE_WEB_DIR` |
+An enviroment variable *MUST* be set that that points to an existing Live2D Cubism SDK directory, for _Native_ and _Web_, respetively:
+|        | Enviroment variable name       |
+| ------ | ------------------------------ |
+| Native | `LIVE2D_CUBISM_SDK_NATIVE_DIR` |
+| Web    | `LIVE2D_CUBISM_SDK_WEB_DIR`    |
 
 e.g.
 ```
-LIVE2D_CUBISM_CORE_DIR=D:/Development/live2d/CubismSdkForNative-4-r.5.1/Core
-LIVE2D_CUBISM_CORE_WEB_DIR=D:/Development/live2d/CubismSdkForWeb-4-r.5/Core
+LIVE2D_CUBISM_SDK_NATIVE_DIR=D:/Development/live2d/CubismSdkForNative-4-r.5.1
+LIVE2D_CUBISM_SDK_WEB_DIR=D:/Development/live2d/CubismSdkForWeb-4-r.5
 ```
 
 Live2D Cubism SDK Core is included in _Live2D Cubism SDK for Native_, or _Web_, downloaded from:

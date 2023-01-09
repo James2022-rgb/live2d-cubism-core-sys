@@ -15,7 +15,7 @@ fn main() {
 }
 
 fn handle_target_native() {
-  let cubism_core_dir = get_cubism_core_dir();
+  let cubism_core_dir = get_cubism_sdk_core_dir();
 
   const WRAPPER_HEADER: &str = "src/wrapper.h";
 
@@ -72,16 +72,19 @@ fn handle_target_native() {
 }
 
 fn handle_target_web() {
-  // let cubism_core_js_filepath = concat!(env!("LIVE2D_CUBISM_CORE_WEB_DIR"), "/live2dcubismcore.js");
+  // let cubism_core_js_filepath = concat!(env!("LIVE2D_CUBISM_SDK_NATIVE_DIR"), "/live2dcubismcore.js");
 }
 
-fn get_cubism_core_dir() -> String {
+fn get_cubism_sdk_dir() -> PathBuf {
   let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
   let env_var_name = match target_arch.as_str() {
-    "wasm32" => "LIVE2D_CUBISM_CORE_WEB_DIR",
-    _ => "LIVE2D_CUBISM_CORE_DIR",
+    "wasm32" => "LIVE2D_CUBISM_SDK_WEB_DIR",
+    _ => "LIVE2D_CUBISM_SDK_NATIVE_DIR",
   };
 
-  env::var("LIVE2D_CUBISM_CORE_DIR").unwrap_or_else(|err| panic!("Failed to get environment variable \"{env_var_name}\" ! {err:?}"))
+  env::var(env_var_name).unwrap_or_else(|err| panic!("Failed to get environment variable \"{env_var_name}\" ! {err:?}")).into()
+}
+fn get_cubism_sdk_core_dir() -> PathBuf {
+  get_cubism_sdk_dir().join("Core")
 }

@@ -11,7 +11,7 @@ mod platform_impl {
 
 #[cfg(target_arch = "wasm32")]
 mod platform_impl {
-  const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_CORE_WEB_DIR"), "/live2dcubismcore.js"));
+  const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Core/live2dcubismcore.js"));
 
   use wasm_bindgen::JsCast as _;
 
@@ -169,7 +169,7 @@ pub mod tests {
     log::info!("core_version: {core_version}");
     log::info!("latest_moc_version: {latest_moc_version}");
 
-    let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_CORE_WEB_DIR"), "/../Samples/Resources/Haru/Haru.moc3"));
+    let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Samples/Resources/Haru/Haru.moc3"));
     let moc = live2d_cubism_core.moc_from_bytes(moc_bytes);
     
     let model = live2d_cubism_core.model_fromMoc(&moc);
@@ -194,7 +194,7 @@ mod tests {
       println!("core_version: {}", core_version);
       println!("latest_moc_version: {}", latest_moc_version);
 
-      let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_CORE_DIR"), "/../Samples/Resources/Haru/Haru.moc3"));
+      let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_SDK_NATIVE_DIR"), "/Samples/Resources/Haru/Haru.moc3"));
 
       {
         // Refer to: https://docs.live2d.com/cubism-sdk-manual/cubism-core-api-reference/#
