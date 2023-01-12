@@ -11,6 +11,9 @@ build = "src/build.rs"
 
 [dependencies]
 log = "0.4"
+shrinkwraprs = "0.3.0"
+num_enum = "0.5.7"
+itertools = "0.10.5"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.83"
