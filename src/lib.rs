@@ -31,6 +31,7 @@ mod public_api {
   }
 
   /// moc3 file format version.
+  /// Note that there is no equivalent of `csmMocVersion_Unknown`.
   #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
   #[repr(u32)]
   pub enum MocVersion {
@@ -94,6 +95,7 @@ mod public_api {
     pub ty: ParameterType,
     pub value_range: std::ops::Range<f32>,
     pub default_value: f32,
+    pub keys: Vec<f32>,
   }
 
   pub struct Part {
@@ -209,17 +211,25 @@ mod platform_impl {
           .map(|value| public_api::ParameterType::try_from(*value).unwrap())
           .collect();
 
+        // TODO: `to_vec` unnecessary?
         let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count as _).to_vec();
         let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _).to_vec();
         let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _).to_vec();
 
-        itertools::izip!(ids, types, minimum_values, maximum_values, default_values)
-          .map(|(id, ty, minimum_value, maximum_value, default_value)| {
+        let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _).to_vec();
+        let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _).to_vec();
+
+        let key_value_containers: Vec<_> = itertools::izip!(key_counts, key_value_ptrs)
+          .map(|(key_count, key_value_ptr)| std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec()).collect();
+
+        itertools::izip!(ids, types, minimum_values, maximum_values, default_values, key_value_containers)
+          .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
             public_api::Parameter {
               id,
               ty,
               value_range: minimum_value..maximum_value,
               default_value,
+              keys: key_value_container,
             }
           })
           .collect()
@@ -297,13 +307,15 @@ mod platform_impl {
       let canvas_info = js_model.canvas_info;
       let parameters: Vec<_> = {
         let parameters = &js_model.parameters;
-        itertools::izip!(parameters.ids(), parameters.types(), parameters.minimum_values(), parameters.maximum_values(), parameters.default_values())
-          .map(|(id, ty, minimum_value, maximum_value, default_value)| {
+
+        itertools::izip!(parameters.ids(), parameters.types(), parameters.minimum_values(), parameters.maximum_values(), parameters.default_values(), parameters.key_value_containers())
+          .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
             public_api::Parameter {
               id: id.clone(),
               ty: *ty,
               value_range: *minimum_value..*maximum_value,
               default_value: *default_value,
+              keys: key_value_container.clone(),
             }
           })
           .collect()
@@ -372,6 +384,7 @@ mod platform_impl {
     minimum_values: Vec<f32>,
     maximum_values: Vec<f32>,
     default_values: Vec<f32>,
+    key_value_containers: Vec<Vec<f32>>,
   }
   pub struct JsParts {
     /// The `parts` member variable of a `Live2DCubismCore.Model` instance object.
@@ -495,6 +508,8 @@ mod platform_impl {
     pub fn maximum_values(&self) -> &[f32] { &self.maximum_values }
     /// Equivalent to `csmGetParameterDefaultValues`.
     pub fn default_values(&self) -> &[f32] { &self.default_values }
+    /// Equivalent to `csmGetParameterKeyCounts` and `csmGetParameterKeyValues`.
+    pub fn key_value_containers(&self) -> &Vec<Vec<f32>> { &self.key_value_containers }
   }
 
   impl JsParts {
@@ -527,6 +542,9 @@ mod platform_impl {
       let default_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"defaultValues".into()).unwrap());
       let default_values = default_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
 
+      let key_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"keyValues".into()).unwrap());
+      let key_value_containers: Vec<Vec<f32>> = key_values.iter().map(|value| js_sys::Array::from(&value).iter().map(|value| value.as_f64().unwrap() as f32).collect()).collect();
+
       Self {
         parameters_instance,
 
@@ -536,6 +554,7 @@ mod platform_impl {
         minimum_values,
         maximum_values,
         default_values,
+        key_value_containers,
       }
     }
   }
