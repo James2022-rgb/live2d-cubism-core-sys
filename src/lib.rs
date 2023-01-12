@@ -76,6 +76,7 @@ mod public_api {
     pub(super) inner: platform_impl::PlatformModel,
     pub(super) canvas_info: CanvasInfo,
     pub(super) parameters: Vec<Parameter>,
+    pub(super) parts: Vec<Part>,
   }
 
   #[derive(Debug, Clone, Copy)]
@@ -98,10 +99,10 @@ mod public_api {
     pub keys: Vec<f32>,
   }
 
+  #[derive(Debug)]
   pub struct Part {
-    id: String,
-    opacity: f32,
-    parent_part_index: Option<usize>,
+    pub id: String,
+    pub parent_part_index: Option<usize>,
   }
 
   pub struct Drawable;
@@ -235,6 +236,25 @@ mod platform_impl {
           .collect()
       };
 
+      let parts: Vec<_> = unsafe {
+        let count = csmGetPartCount(csm_model);
+
+        let ids = std::slice::from_raw_parts(csmGetPartIds(csm_model), count as _).to_vec();
+        let ids: Vec<String> = ids.iter().map(|&c_str_ptr| crate::to_string(c_str_ptr)).collect();
+
+        let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetPartParentPartIndices(csm_model), count as _).iter()
+          .map(|&value| (value > 0).then_some(value as usize)).collect();
+
+        itertools::izip!(ids, parent_part_indices)
+          .map(|(id, parent_part_index)| {
+            public_api::Part {
+              id,
+              parent_part_index,
+            }
+          })
+          .collect()
+      };
+
       public_api::Model {
         inner: PlatformModel {
           csm_model,
@@ -243,6 +263,7 @@ mod platform_impl {
         },
         canvas_info,
         parameters,
+        parts,
       }
     }
   }
@@ -320,6 +341,18 @@ mod platform_impl {
           })
           .collect()
       };
+      let parts = {
+        let parts = &js_model.parts;
+
+        itertools::izip!(parts.ids(), parts.parent_part_indices())
+          .map(|(id, parent_part_index)| {
+            public_api::Part {
+              id: id.clone(),
+              parent_part_index: *parent_part_index,
+            }
+          })
+          .collect()
+      };
 
       public_api::Model {
         inner: PlatformModel {
@@ -327,6 +360,7 @@ mod platform_impl {
         },
         canvas_info,
         parameters,
+        parts,
       }
     }
   }
@@ -393,8 +427,7 @@ mod platform_impl {
 
     count: u32,
     ids: Vec<String>,
-    opacities: Vec<f32>,
-    parent_part_indices: Vec<Option<u32>>
+    parent_part_indices: Vec<Option<usize>>
   }
 
   impl Default for JsLive2DCubismCore {
@@ -517,10 +550,8 @@ mod platform_impl {
     pub fn count(&self) -> u32 { self.count }
     /// Equivalent to `csmGetPartIds`.
     pub fn ids(&self) -> &[String] { &self.ids }
-    /// Equivalent to `csmGetPartOpacities`.
-    pub fn opacities(&self) -> &[f32] { &self.opacities }
     // Equivalent to `csmGetPartParentPartIndices`.
-    pub fn parent_part_indices(&self) -> &[Option<u32>] { &self.parent_part_indices }
+    pub fn parent_part_indices(&self) -> &[Option<usize>] { &self.parent_part_indices }
   }
 
   impl JsParameters {
@@ -566,13 +597,10 @@ mod platform_impl {
       let ids = js_sys::Array::from(&js_sys::Reflect::get(&parts_instance, &"ids".into()).unwrap());
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
-      let opacities = js_sys::Array::from(&js_sys::Reflect::get(&parts_instance, &"opacities".into()).unwrap());
-      let opacities = opacities.iter().map(|value| value.as_f64().unwrap() as f32).collect();
-
       let parent_part_indices = js_sys::Array::from(&js_sys::Reflect::get(&parts_instance, &"parentIndices".into()).unwrap());
       let parent_part_indices = parent_part_indices.iter().map(|value| {
         let number = value.as_f64().unwrap();
-        (number > 0.0).then_some(number as u32)
+        (number > 0.0).then_some(number as usize)
       }).collect();
 
       Self {
@@ -580,7 +608,6 @@ mod platform_impl {
 
         count,
         ids,
-        opacities,
         parent_part_indices,
       }
     }
@@ -643,6 +670,7 @@ pub mod public_api_tests {
 
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);
+    log::info!("{:?}", model.parts);
   }
 
   #[cfg(not(target_arch = "wasm32"))]
