@@ -6,6 +6,7 @@ pub use platform_impl::*;
 mod public_api {
   use shrinkwraprs::Shrinkwrap;
   use num_enum::TryFromPrimitive;
+  use flagset::{FlagSet, flags};
 
   use super::platform_impl;
 
@@ -77,6 +78,7 @@ mod public_api {
     pub(super) canvas_info: CanvasInfo,
     pub(super) parameters: Vec<Parameter>,
     pub(super) parts: Vec<Part>,
+    pub(super) drawables: Vec<Drawable>,
   }
 
   #[derive(Debug, Clone, Copy)]
@@ -105,9 +107,21 @@ mod public_api {
     pub parent_part_index: Option<usize>,
   }
 
-  pub struct Drawable;
+  #[derive(Debug)]
+  pub struct Drawable {
+    pub id: String,
+    pub constant_flags: ConstantDrawableFlagSet,
+  }
 
-
+  pub type ConstantDrawableFlagSet = FlagSet<ConstantDrawableFlags>;
+  flags! {
+    pub enum ConstantDrawableFlags: u8 {
+      BlendAdditive,
+      BlendMultiplicative,
+      IsDoubleSided,
+      IsInvertedMask,
+    }
+  }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -212,7 +226,7 @@ mod platform_impl {
           .map(|value| public_api::ParameterType::try_from(*value).unwrap())
           .collect();
 
-        // TODO: `to_vec` unnecessary?
+        // TODO: Check for unnecessary `to_vec` use?
         let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count as _).to_vec();
         let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _).to_vec();
         let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _).to_vec();
@@ -255,6 +269,26 @@ mod platform_impl {
           .collect()
       };
 
+      let drawables = unsafe {
+        let count = csmGetDrawableCount(csm_model);
+
+        let ids = std::slice::from_raw_parts(csmGetDrawableIds(csm_model), count as _).to_vec();
+        let ids: Vec<String> = ids.iter().map(|&c_str_ptr| crate::to_string(c_str_ptr)).collect();
+
+        let constant_flagsets: Vec<_> = std::slice::from_raw_parts(csmGetDrawableConstantFlags(csm_model), count as _).iter()
+          .map(|value| public_api::ConstantDrawableFlagSet::new(*value).unwrap())
+          .collect();
+
+        itertools::izip!(ids, constant_flagsets)
+          .map(|(id, constant_flagset)| {
+            public_api::Drawable {
+              id,
+              constant_flags: constant_flagset,
+            }
+          })
+          .collect()
+      };
+
       public_api::Model {
         inner: PlatformModel {
           csm_model,
@@ -264,6 +298,7 @@ mod platform_impl {
         canvas_info,
         parameters,
         parts,
+        drawables,
       }
     }
   }
@@ -353,6 +388,18 @@ mod platform_impl {
           })
           .collect()
       };
+      let drawables = {
+        let drawables = &js_model.drawables;
+
+        itertools::izip!(drawables.ids(), drawables.constant_flagsets())
+          .map(|(id, constant_flagset)| {
+            public_api::Drawable {
+              id: id.clone(),
+              constant_flags: *constant_flagset,
+            }
+          })
+          .collect()
+      };
 
       public_api::Model {
         inner: PlatformModel {
@@ -361,6 +408,7 @@ mod platform_impl {
         canvas_info,
         parameters,
         parts,
+        drawables,
       }
     }
   }
@@ -406,6 +454,7 @@ mod platform_impl {
     pub canvas_info: public_api::CanvasInfo,
     pub parameters: JsParameters,
     pub parts: JsParts,
+    pub drawables: JsDrawables,
   }
   pub struct JsParameters {
     /// The `parameters` member variable of a `Live2DCubismCore.Model` instance object.
@@ -428,6 +477,15 @@ mod platform_impl {
     count: u32,
     ids: Vec<String>,
     parent_part_indices: Vec<Option<usize>>
+  }
+  pub struct JsDrawables {
+    /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
+    /// An instance of `Live2DCubismCore.Drawables` class object.
+    drawables_instance: wasm_bindgen::JsValue,
+
+    count: u32,
+    ids: Vec<String>,
+    constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
   }
 
   impl Default for JsLive2DCubismCore {
@@ -518,12 +576,14 @@ mod platform_impl {
 
       let parameters = JsParameters::from_parameters_instance(js_sys::Reflect::get(&model_instance, &"parameters".into()).unwrap());
       let parts = JsParts::from_parts_instance(js_sys::Reflect::get(&model_instance, &"parts".into()).unwrap());
+      let drawables = JsDrawables::from_drawables_instance(js_sys::Reflect::get(&model_instance, &"drawables".into()).unwrap());
 
       JsModel {
         model_instance,
         canvas_info,
         parameters,
         parts,
+        drawables,
       }
     }
   }
@@ -552,6 +612,15 @@ mod platform_impl {
     pub fn ids(&self) -> &[String] { &self.ids }
     // Equivalent to `csmGetPartParentPartIndices`.
     pub fn parent_part_indices(&self) -> &[Option<usize>] { &self.parent_part_indices }
+  }
+
+  impl JsDrawables {
+    /// Equivalent to `csmGetDrawableCount`.
+    pub fn count(&self) -> u32 { self.count }
+    /// Equivalent to `csmGetDrawableIds`.
+    pub fn ids(&self) -> &[String] { &self.ids }
+    /// Equivalent to `csmGetDrawableConstantFlags`.
+    pub fn constant_flagsets(&self) -> &[public_api::ConstantDrawableFlagSet] { &self.constant_flagsets }
   }
 
   impl JsParameters {
@@ -612,6 +681,27 @@ mod platform_impl {
       }
     }
   }
+
+  impl JsDrawables {
+    fn from_drawables_instance(drawables_instance: wasm_bindgen::JsValue) -> Self {
+      let count = js_sys::Reflect::get(&drawables_instance, &"count".into()).unwrap().as_f64().unwrap() as u32;
+
+      let ids = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"ids".into()).unwrap());
+      let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
+
+      let constant_flagsets = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"constantFlags".into()).unwrap());
+      let constant_flagsets: Vec<_> = constant_flagsets.iter()
+        .map(|value| public_api::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap()).collect();
+
+      Self {
+        drawables_instance,
+
+        count,
+        ids,
+        constant_flagsets,
+      }
+    }
+  }
 }
 
 #[cfg(test)]
@@ -660,6 +750,7 @@ pub mod public_api_tests {
       console_log::init_with_level(log::Level::Trace).unwrap();
     }
 
+    // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.moc3"));
     let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
 
     let cubism_core = public_api::CubismCore::default();
@@ -671,6 +762,7 @@ pub mod public_api_tests {
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);
     log::info!("{:?}", model.parts);
+    log::info!("{:?}", model.drawables);
   }
 
   #[cfg(not(target_arch = "wasm32"))]

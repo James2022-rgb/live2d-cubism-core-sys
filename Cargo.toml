@@ -13,6 +13,7 @@ build = "src/build.rs"
 log = "0.4"
 shrinkwraprs = "0.3.0"
 num_enum = "0.5.7"
+flagset = "0.4.3"
 itertools = "0.10.5"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
