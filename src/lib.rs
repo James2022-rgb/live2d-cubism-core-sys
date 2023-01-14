@@ -10,6 +10,8 @@ mod public_api {
 
   use super::platform_impl;
 
+  pub type Vector2 = mint::Vector2<f32>;
+
   /// Cubism version identifier.
   #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
   #[repr(transparent)]
@@ -113,6 +115,7 @@ mod public_api {
     pub constant_flags: ConstantDrawableFlagSet,
     pub texture_index: usize,
     pub masks: Vec<usize>,
+    pub vertex_uvs: Vec<Vector2>,
     pub parent_part_index: Option<usize>,
   }
 
@@ -297,16 +300,26 @@ mod platform_impl {
           })
           .collect();
 
+        let vertex_counts = std::slice::from_raw_parts(csmGetDrawableVertexCounts(csm_model), count as _);
+        let vertex_uv_ptrs = std::slice::from_raw_parts(csmGetDrawableVertexUvs(csm_model), count as _);
+
+        let vertex_uv_containers: Vec<_> = itertools::izip!(vertex_counts, vertex_uv_ptrs)
+          .map(|(&vertex_count, &vertex_uv_ptr)| {
+            std::slice::from_raw_parts(vertex_uv_ptr as *const public_api::Vector2, vertex_count as _).to_vec()
+          })
+          .collect();
+
         let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetDrawableParentPartIndices(csm_model), count as _).iter()
           .map(|&value| (value > 0).then_some(value as usize)).collect();
 
-        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers, parent_part_indices)
-          .map(|(id, constant_flagset, texture_index, mask_container, parent_part_index),| {
+        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers, vertex_uv_containers, parent_part_indices)
+          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index),| {
             public_api::Drawable {
               id,
               constant_flags: constant_flagset,
               texture_index,
               masks: mask_container,
+              vertex_uvs: vertex_uv_container,
               parent_part_index,
             }
           })
@@ -415,13 +428,14 @@ mod platform_impl {
       let drawables = {
         let drawables = &js_model.drawables;
 
-        itertools::izip!(drawables.ids(), drawables.constant_flagsets(), drawables.texture_indices(), drawables.mask_containers(), drawables.parent_part_indices())
-          .map(|(id, constant_flagset, texture_index, mask_container, parent_part_index)| {
+        itertools::izip!(drawables.ids(), drawables.constant_flagsets(), drawables.texture_indices(), drawables.mask_containers(), drawables.vertex_uv_containers(), drawables.parent_part_indices())
+          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index)| {
             public_api::Drawable {
               id: id.clone(),
               constant_flags: *constant_flagset,
               texture_index: *texture_index,
               masks: mask_container.clone(),
+              vertex_uvs: vertex_uv_container.clone(),
               parent_part_index: *parent_part_index,
             }
           })
@@ -515,6 +529,7 @@ mod platform_impl {
     constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
     texture_indices: Vec<usize>,
     mask_containers: Vec<Vec<usize>>,
+    vertex_uv_containers: Vec<Vec<public_api::Vector2>>,
     parent_part_indices: Vec<Option<usize>>,
   }
 
@@ -530,7 +545,7 @@ mod platform_impl {
       let csmGetLatestMocVersion = js_sys::Reflect::get(&version_class, &"csmGetLatestMocVersion".into()).unwrap()
         .dyn_into::<js_sys::Function>().unwrap();
       let csmGetMocVersion = js_sys::Reflect::get(&version_class, &"csmGetMocVersion".into()).unwrap()
-      .dyn_into::<js_sys::Function>().unwrap();
+        .dyn_into::<js_sys::Function>().unwrap();
 
       let moc_class = js_sys::Reflect::get(&live2d_cubism_core_namespace, &"Moc".into()).unwrap();
 
@@ -655,6 +670,8 @@ mod platform_impl {
     pub fn texture_indices(&self) -> &[usize] { &self.texture_indices }
     /// Equivalent to `csmGetDrawableMaskCounts` and `csmGetDrawableMasks`.
     pub fn mask_containers(&self) -> &[Vec<usize>] { &self.mask_containers }
+    /// Equivalent to `csmGetDrawableVertexUvs`.
+    pub fn vertex_uv_containers(&self) -> &[Vec<public_api::Vector2>] { &self.vertex_uv_containers }
     // Equivalent to `csmGetDrawableParentPartIndices`.
     pub fn parent_part_indices(&self) -> &[Option<usize>] { &self.parent_part_indices }
   }
@@ -746,6 +763,27 @@ mod platform_impl {
         })
         .collect();
 
+      let vertex_uv_containers = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"vertexUvs".into()).unwrap());
+      let vertex_uv_containers: Vec<_> = vertex_uv_containers.iter()
+        .map(|v| {
+          let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
+
+          let dst_len: usize = (typed_array.length() / 2) as _;
+          let mut dst = Vec::<public_api::Vector2>::with_capacity(dst_len);
+          unsafe {
+            typed_array.raw_copy_to_ptr(dst.as_mut_ptr() as *mut f32);
+          }
+
+          // SAFETY:
+          // 1. Constructed with `with_capacity`.
+          // 2. `raw_copy_to_ptr` initialized the elements.
+          unsafe {
+            dst.set_len(dst_len);
+          }
+          dst
+        })
+        .collect();
+
       let parent_part_indices = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"parentPartIndices".into()).unwrap());
       let parent_part_indices: Vec<_> = parent_part_indices.iter()
         .map(|value| {
@@ -762,6 +800,7 @@ mod platform_impl {
         constant_flagsets,
         texture_indices,
         mask_containers,
+        vertex_uv_containers,
         parent_part_indices,
       }
     }
