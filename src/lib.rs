@@ -1,8 +1,6 @@
 
 mod memory;
 
-pub use platform_impl::*;
-
 mod public_api {
   use shrinkwraprs::Shrinkwrap;
   use derive_more::Display;
@@ -71,8 +69,8 @@ mod public_api {
 
   /// Cubism moc.
   pub struct Moc {
+    pub version: MocVersion,
     pub(super) inner: platform_impl::PlatformMoc,
-    pub(super) version: MocVersion,
   }
   impl std::ops::Deref for Moc {
     type Target = platform_impl::PlatformMoc;
@@ -81,11 +79,11 @@ mod public_api {
 
   /// Cubism model.
   pub struct Model {
-    pub(super) inner: platform_impl::PlatformModel,
     pub(super) canvas_info: CanvasInfo,
     pub(super) parameters: Vec<Parameter>,
     pub(super) parts: Vec<Part>,
     pub(super) drawables: Vec<Drawable>,
+    pub(super) inner: platform_impl::PlatformModel,
   }
 
   #[derive(Debug, Clone, Copy)]
@@ -183,11 +181,11 @@ mod platform_impl {
       };
 
       public_api::Moc {
+        version: moc_version,
         inner: PlatformMoc {
           csm_moc,
           moc_storage: Arc::new(aligned_storage),
         },
-        version: moc_version,
       }.into()
     }
   }
@@ -334,15 +332,15 @@ mod platform_impl {
       };
 
       public_api::Model {
+        canvas_info,
+        parameters,
+        parts,
+        drawables,
         inner: PlatformModel {
           csm_model,
           model_storage: aligned_storage,
           moc_storage: Arc::clone(&self.moc_storage),
         },
-        canvas_info,
-        parameters,
-        parts,
-        drawables,
       }
     }
   }
@@ -382,11 +380,11 @@ mod platform_impl {
       let moc_version = public_api::MocVersion::try_from(moc_version).ok()?; // TODO: Error.
 
       public_api::Moc {
+        version: moc_version,
         inner: PlatformMoc {
           js_moc,
           js_cubism_core: Arc::clone(&self.js_cubism_core),
         },
-        version: moc_version,
       }.into()
     }
   }
@@ -406,13 +404,13 @@ mod platform_impl {
       let drawables = js_model.drawables.to_aos();
 
       public_api::Model {
-        inner: PlatformModel {
-          js_model,
-        },
         canvas_info,
         parameters,
         parts,
         drawables,
+        inner: PlatformModel {
+          js_model,
+        },
       }
     }
   }
@@ -435,14 +433,17 @@ mod platform_impl {
 
     /// The `Live2DCubismCore.Version` class object.
     version_class: wasm_bindgen::JsValue,
+    /// The `Live2DCubismCore.Version.csmGetMocVersion` static method.
     csmGetMocVersion: js_sys::Function,
 
     /// The `Live2DCubismCore.Moc` class object.
     moc_class: wasm_bindgen::JsValue,
+    /// The`Live2DCubismCore.Moc.fromArrayBuffer` static method.
     fromArrayBuffer: js_sys::Function,
 
     /// The `Live2DCubismCore.Model` class object.
     model_class: wasm_bindgen::JsValue,
+    /// The `Live2DCubismCore.Model.fromMoc` static method.
     fromMoc: js_sys::Function,
   }
 
@@ -541,7 +542,7 @@ mod platform_impl {
 
   impl JsLive2DCubismCore {
     pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
-      // `Version.csmGetMocVersion` requires a `Moc`, unlike Native SDK.
+      // `Version.csmGetMocVersion` requires a `Moc`, unlike `csmGetMocVersion` in the Native SDK.
       let moc_instance = self.fromArrayBuffer.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
       assert!(!moc_instance.is_undefined());
 
@@ -819,6 +820,8 @@ pub mod public_api_tests {
     log::info!("Latest supported moc version: {}", cubism_core.latest_supported_moc_version());
 
     let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
+    log::info!("Moc version: {}", moc.version);
+
     let model = moc.to_model();
 
     log::info!("{:?}", model.canvas_info);
