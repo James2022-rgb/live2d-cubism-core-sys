@@ -119,6 +119,7 @@ mod public_api {
     pub texture_index: usize,
     pub masks: Vec<usize>,
     pub vertex_uvs: Vec<Vector2>,
+    pub triangle_indices: Vec<u16>,
     pub parent_part_index: Option<usize>,
   }
 
@@ -310,17 +311,27 @@ mod platform_impl {
           })
           .collect();
 
+        let triangle_index_counts = std::slice::from_raw_parts(csmGetDrawableIndexCounts(csm_model), count as _);
+        let triangle_index_ptrs = std::slice::from_raw_parts(csmGetDrawableIndices(csm_model), count as _);
+
+        let triangle_index_containers: Vec<_> = itertools::izip!(triangle_index_counts, triangle_index_ptrs)
+          .map(|(&triangle_index_count, &triangle_index_ptr)| {
+            std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec()
+          })
+          .collect();
+
         let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetDrawableParentPartIndices(csm_model), count as _).iter()
           .map(|&value| (value > 0).then_some(value as usize)).collect();
 
-        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers, vertex_uv_containers, parent_part_indices)
-          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index),| {
+        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers, vertex_uv_containers, triangle_index_containers, parent_part_indices)
+          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index),| {
             public_api::Drawable {
               id,
               constant_flags: constant_flagset,
               texture_index,
               masks: mask_container,
               vertex_uvs: vertex_uv_container,
+              triangle_indices: triangle_index_container,
               parent_part_index,
             }
           })
@@ -499,6 +510,7 @@ pub mod sys {
     pub texture_indices: Vec<usize>,
     pub mask_containers: Vec<Vec<usize>>,
     pub vertex_uv_containers: Vec<Vec<public_api::Vector2>>,
+    pub triangle_index_containers: Vec<Vec<u16>>,
     pub parent_part_indices: Vec<Option<usize>>,
 
     /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
@@ -729,20 +741,14 @@ pub mod sys {
       let vertex_uv_containers: Vec<_> = get_member_array(&drawables_instance, "vertexUvs").iter()
         .map(|v| {
           let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
+          float32_array_to_vec(&typed_array)
+        })
+        .collect();
 
-          let dst_len: usize = (typed_array.length() / 2) as _;
-          let mut dst = Vec::<public_api::Vector2>::with_capacity(dst_len);
-          unsafe {
-            typed_array.raw_copy_to_ptr(dst.as_mut_ptr() as *mut f32);
-          }
-
-          // SAFETY:
-          // 1. Constructed with `with_capacity`.
-          // 2. `raw_copy_to_ptr` initialized the elements.
-          unsafe {
-            dst.set_len(dst_len);
-          }
-          dst
+      let triangle_index_containers: Vec<_> = get_member_array(&drawables_instance, "indices").iter()
+        .map(|v| {
+          let typed_array = v.dyn_into::<js_sys::Uint16Array>().unwrap();
+          uint16_array_to_vec(&typed_array)
         })
         .collect();
 
@@ -759,6 +765,7 @@ pub mod sys {
         texture_indices,
         mask_containers,
         vertex_uv_containers,
+        triangle_index_containers,
         parent_part_indices,
 
         drawables_instance,
@@ -766,14 +773,15 @@ pub mod sys {
     }
 
     pub fn to_aos(&self) -> Vec<public_api::Drawable> {
-      itertools::izip!(&self.ids, &self.constant_flagsets, &self.texture_indices, &self.mask_containers, &self.vertex_uv_containers, &self.parent_part_indices)
-        .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index)| {
+      itertools::izip!(&self.ids, &self.constant_flagsets, &self.texture_indices, &self.mask_containers, &self.vertex_uv_containers, &self.triangle_index_containers, &self.parent_part_indices)
+        .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index)| {
           public_api::Drawable {
             id: id.clone(),
             constant_flags: *constant_flagset,
             texture_index: *texture_index,
             masks: mask_container.clone(),
             vertex_uvs: vertex_uv_container.clone(),
+            triangle_indices: triangle_index_container.clone(),
             parent_part_index: *parent_part_index,
           }
         })
@@ -790,6 +798,29 @@ pub mod sys {
   }
   fn get_member_array<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Array {
     js_sys::Array::from(&get_member_value(value, name))
+  }
+
+  fn uint16_array_to_vec<O>(typed_array: &js_sys::Uint16Array) -> Vec<O> {
+    typed_array_to_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
+  }
+  fn float32_array_to_vec<O>(typed_array: &js_sys::Float32Array) -> Vec<O> {
+    typed_array_to_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
+  }
+  fn typed_array_to_vec<O, E, W: FnOnce(*mut E)>(length: u32, writer: W) -> Vec<O> {
+    let src_element_size = std::mem::size_of::<E>();
+    let dst_element_size = std::mem::size_of::<O>();
+
+    let dst_len = length as usize / (dst_element_size / src_element_size);
+    let mut dst = Vec::<O>::with_capacity(dst_len);
+    writer(dst.as_mut_ptr() as *mut E);
+
+    // SAFETY:
+    // 1. Constructed with `with_capacity`.
+    // 2. `writer` must have initialized the elements.
+    unsafe {
+      dst.set_len(dst_len);
+    }
+    dst
   }
 }
 
