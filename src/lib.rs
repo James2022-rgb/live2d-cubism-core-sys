@@ -5,6 +5,7 @@ pub use platform_impl::*;
 
 mod public_api {
   use shrinkwraprs::Shrinkwrap;
+  use derive_more::Display;
   use num_enum::TryFromPrimitive;
   use flagset::{FlagSet, flags};
 
@@ -35,16 +36,20 @@ mod public_api {
 
   /// moc3 file format version.
   /// Note that there is no equivalent of `csmMocVersion_Unknown`.
-  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
+  #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
   #[repr(u32)]
   pub enum MocVersion {
     /// moc3 file version 3.0.00 - 3.2.07
+    #[display(fmt = "30(3.0.00 - 3.2.07)")]
     Moc3_30 = 1,
     /// moc3 file version 3.3.00 - 3.3.03
+    #[display(fmt = "33(3.3.00 - 3.3.03)")]
     Moc3_33 = 2,
     /// moc3 file version 4.0.00 - 4.1.05
+    #[display(fmt = "33(4.0.00 - 4.1.05)")]
     Moc3_40 = 3,
     /// moc3 file version 4.2.00 -
+    #[display(fmt = "33(4.2.00 -)")]
     Moc3_42 = 4,
   }
 
@@ -359,12 +364,8 @@ mod platform_impl {
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
   impl PlatformCubismCore {
-    pub fn version(&self) -> public_api::CubismVersion {
-      public_api::CubismVersion(self.js_cubism_core.core_version())
-    }
-    pub fn latest_supported_moc_version(&self) -> public_api::MocVersion {
-      self.js_cubism_core.latest_supported_moc_version().try_into().unwrap()
-    }
+    pub fn version(&self) -> public_api::CubismVersion { self.js_cubism_core.cubism_version }
+    pub fn latest_supported_moc_version(&self) -> public_api::MocVersion { self.js_cubism_core.latest_supported_moc_version }
 
     pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<public_api::Moc> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
@@ -424,13 +425,14 @@ mod platform_impl {
 
   #[derive(Debug)]
   pub struct JsLive2DCubismCore {
+    cubism_version: public_api::CubismVersion,
+    latest_supported_moc_version: public_api::MocVersion,
+
     /// The `Live2DCubismCore` namespace object.
     live2d_cubism_core_namespace: wasm_bindgen::JsValue,
 
     /// The `Live2DCubismCore.Version` class object.
     version_class: wasm_bindgen::JsValue,
-    csmGetVersion: js_sys::Function,
-    csmGetLatestMocVersion: js_sys::Function,
     csmGetMocVersion: js_sys::Function,
 
     /// The `Live2DCubismCore.Moc` class object.
@@ -493,30 +495,37 @@ mod platform_impl {
 
   impl Default for JsLive2DCubismCore {
     fn default() -> Self {
+      #![allow(non_snake_case)]
+
       let code = format!("{LIVE2DCUBISMCORE_JS_STR}\n Live2DCubismCore");
       let live2d_cubism_core_namespace = js_sys::eval(&code).expect("Failed to evaluate synthesized JavaScript code!");
 
       let version_class = get_member_value(&live2d_cubism_core_namespace, "Version");
 
-      let csmGetVersion = get_member_function(&version_class, "csmGetVersion");
-      let csmGetLatestMocVersion = get_member_function(&version_class, "csmGetLatestMocVersion");
+      let cubism_version = {
+        let csmGetVersion = get_member_function(&version_class, "csmGetVersion");
+        public_api::CubismVersion(csmGetVersion.call0(&version_class).unwrap().as_f64().unwrap() as u32)
+      };
+      let latest_supported_moc_version = {
+        let csmGetLatestMocVersion = get_member_function(&version_class, "csmGetLatestMocVersion");
+        public_api::MocVersion::try_from(csmGetLatestMocVersion.call0(&version_class).unwrap().as_f64().unwrap() as u32).unwrap()
+      };
+
       let csmGetMocVersion = get_member_function(&version_class, "csmGetMocVersion");
 
       let moc_class = get_member_value(&live2d_cubism_core_namespace, "Moc");
-
       let fromArrayBuffer = get_member_function(&moc_class, "fromArrayBuffer");
 
       let model_class = get_member_value(&live2d_cubism_core_namespace, "Model");
-
       let fromMoc = get_member_function(&model_class, "fromMoc");
 
       Self {
+        cubism_version,
+        latest_supported_moc_version,
+
         live2d_cubism_core_namespace,
 
         version_class,
-
-        csmGetVersion,
-        csmGetLatestMocVersion,
         csmGetMocVersion,
 
         moc_class,
@@ -529,15 +538,6 @@ mod platform_impl {
   }
 
   impl JsLive2DCubismCore {
-    /// Equivalent to `csmGetVersion`.
-    pub fn core_version(&self) -> u32 {
-      self.csmGetVersion.call0(&self.version_class).unwrap().as_f64().unwrap() as _
-    }
-    /// Equivalent to `csmGetLatestMocVersion`.
-    pub fn latest_supported_moc_version(&self) -> u32 {
-      self.csmGetLatestMocVersion.call0(&self.version_class).unwrap().as_f64().unwrap() as _
-    }
-
     pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
       // `Version.csmGetMocVersion` requires a `Moc`, unlike Native SDK.
       let moc_instance = self.fromArrayBuffer.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
@@ -814,6 +814,7 @@ pub mod public_api_tests {
 
     let cubism_core = public_api::CubismCore::default();
     log::info!("Live2D Cubism Core Version: {}", cubism_core.version());
+    log::info!("Latest supported moc version: {}", cubism_core.latest_supported_moc_version());
 
     let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
     let model = moc.to_model();
