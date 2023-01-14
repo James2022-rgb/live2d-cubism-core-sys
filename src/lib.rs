@@ -364,6 +364,7 @@ mod platform_impl {
     pub fn version(&self) -> public_api::CubismVersion { self.js_cubism_core.cubism_version }
     pub fn latest_supported_moc_version(&self) -> public_api::MocVersion { self.js_cubism_core.latest_supported_moc_version }
 
+    // TODO: Error
     pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<public_api::Moc> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
       array.copy_from(bytes);
@@ -467,41 +468,42 @@ pub mod sys {
     pub parameters: JsParameters,
     pub parts: JsParts,
     pub drawables: JsDrawables,
+
     /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
     model_instance: wasm_bindgen::JsValue,
   }
 
   pub struct JsParameters {
+    pub ids: Vec<String>,
+    pub types: Vec<public_api::ParameterType>,
+    pub minimum_values: Vec<f32>,
+    pub maximum_values: Vec<f32>,
+    pub default_values: Vec<f32>,
+    pub key_value_containers: Vec<Vec<f32>>,
+
     /// The `parameters` member variable of a `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Parameters` class object.
     parameters_instance: wasm_bindgen::JsValue,
-
-    ids: Vec<String>,
-    types: Vec<public_api::ParameterType>,
-    minimum_values: Vec<f32>,
-    maximum_values: Vec<f32>,
-    default_values: Vec<f32>,
-    key_value_containers: Vec<Vec<f32>>,
   }
   pub struct JsParts {
+    pub ids: Vec<String>,
+    pub parent_part_indices: Vec<Option<usize>>,
+
     /// The `parts` member variable of a `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Parts` class object.
     parts_instance: wasm_bindgen::JsValue,
-
-    ids: Vec<String>,
-    parent_part_indices: Vec<Option<usize>>
   }
   pub struct JsDrawables {
+    pub ids: Vec<String>,
+    pub constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
+    pub texture_indices: Vec<usize>,
+    pub mask_containers: Vec<Vec<usize>>,
+    pub vertex_uv_containers: Vec<Vec<public_api::Vector2>>,
+    pub parent_part_indices: Vec<Option<usize>>,
+
     /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Drawables` class object.
     drawables_instance: wasm_bindgen::JsValue,
-
-    ids: Vec<String>,
-    constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
-    texture_indices: Vec<usize>,
-    mask_containers: Vec<Vec<usize>>,
-    vertex_uv_containers: Vec<Vec<public_api::Vector2>>,
-    parent_part_indices: Vec<Option<usize>>,
   }
 
   impl Default for JsLive2DCubismCore {
@@ -549,6 +551,7 @@ pub mod sys {
   }
 
   impl JsLive2DCubismCore {
+    // TODO: Error.
     pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
       // `Version.csmGetMocVersion` requires a `Moc`, unlike the `csmGetMocVersion` in the Native SDK.
       let moc_instance = self.fromArrayBuffer.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
@@ -560,7 +563,7 @@ pub mod sys {
         version,
         moc_class: self.moc_class.clone(),
         moc_instance,
-     }
+      }
     }
     pub fn moc_from_bytes(&self, bytes: &[u8]) -> JsMoc {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
@@ -611,37 +614,43 @@ pub mod sys {
 
   impl JsParameters {
     fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
-      let ids = get_member_array(&parameters_instance, "ids");
-      let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
+      let ids: Vec<_> = get_member_array(&parameters_instance, "ids").iter()
+        .map(|value| value.as_string().unwrap())
+        .collect();
 
-      let types = get_member_array(&parameters_instance, "types");
-      let types = types.iter().map(|value| public_api::ParameterType::try_from(value.as_f64().unwrap() as i32).unwrap()).collect();
+      let types: Vec<_> = get_member_array(&parameters_instance, "types").iter()
+        .map(|value| public_api::ParameterType::try_from(value.as_f64().unwrap() as i32).unwrap())
+        .collect();
 
-      let minimum_values = get_member_array(&parameters_instance, "minimumValues");
-      let minimum_values = minimum_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
+      let minimum_values: Vec<_> = get_member_array(&parameters_instance, "minimumValues").iter()
+        .map(|value| value.as_f64().unwrap() as f32)
+        .collect();
 
-      let maximum_values = get_member_array(&parameters_instance, "maximumValues");
-      let maximum_values = maximum_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
+      let maximum_values: Vec<_> = get_member_array(&parameters_instance, "maximumValues").iter()
+        .map(|value| value.as_f64().unwrap() as f32)
+        .collect();
 
-      let default_values = get_member_array(&parameters_instance, "defaultValues");
-      let default_values = default_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
+      let default_values: Vec<_> = get_member_array(&parameters_instance, "defaultValues").iter()
+        .map(|value| value.as_f64().unwrap() as f32)
+        .collect();
 
-      let key_values = get_member_array(&parameters_instance, "keyValues");
-      let key_value_containers: Vec<Vec<f32>> = key_values.iter()
+      let key_value_containers: Vec<Vec<f32>> = get_member_array(&parameters_instance, "keyValues").iter()
         .map(|value| {
-          js_sys::Array::from(&value).iter().map(|value| value.as_f64().unwrap() as f32).collect()
+          js_sys::Array::from(&value).iter()
+            .map(|value| value.as_f64().unwrap() as f32)
+            .collect()
         })
         .collect();
 
       Self {
-        parameters_instance,
-
         ids,
         types,
         minimum_values,
         maximum_values,
         default_values,
         key_value_containers,
+
+        parameters_instance,
       }
     }
 
@@ -662,22 +671,22 @@ pub mod sys {
 
   impl JsParts {
     fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
-      let ids = get_member_array(&parts_instance, "ids");
-      let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
+      let ids: Vec<_> = get_member_array(&parts_instance, "ids").iter()
+        .map(|value| value.as_string().unwrap())
+        .collect();
 
-      let parent_part_indices = get_member_array(&parts_instance, "parentIndices");
-      let parent_part_indices = parent_part_indices.iter()
+      let parent_part_indices: Vec<_> = get_member_array(&parts_instance, "parentIndices").iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
           (number > 0.0).then_some(number as usize)
-          })
+        })
         .collect();
 
       Self {
-        parts_instance,
-
         ids,
         parent_part_indices,
+
+        parts_instance,
       }
     }
 
@@ -695,21 +704,21 @@ pub mod sys {
 
   impl JsDrawables {
     fn from_drawables_instance(drawables_instance: wasm_bindgen::JsValue) -> Self {
-      let ids = get_member_array(&drawables_instance, "ids");
-      let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
-
-      let constant_flagsets = get_member_array(&drawables_instance, "constantFlags");
-      let constant_flagsets: Vec<_> = constant_flagsets.iter()
-        .map(|value| public_api::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap())
+      let ids: Vec<_> = get_member_array(&drawables_instance, "ids").iter()
+        .map(|value| value.as_string().unwrap())
         .collect();
 
-      let texture_indices = get_member_array(&drawables_instance, "textureIndices");
-      let texture_indices: Vec<_> = texture_indices.iter()
+      let constant_flagsets: Vec<_> = get_member_array(&drawables_instance, "constantFlags").iter()
+        .map(|value| {
+          public_api::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap()
+        })
+        .collect();
+
+      let texture_indices: Vec<_> = get_member_array(&drawables_instance, "textureIndices").iter()
         .map(|value| value.as_f64().unwrap() as usize)
         .collect();
 
-      let mask_containers = get_member_array(&drawables_instance, "masks");
-      let mask_containers: Vec<_> = mask_containers.iter()
+      let mask_containers: Vec<_> = get_member_array(&drawables_instance, "masks").iter()
         .map(|mask_container| {
           js_sys::Array::from(&mask_container).iter()
             .map(|mask| mask.as_f64().unwrap() as usize)
@@ -717,8 +726,7 @@ pub mod sys {
         })
         .collect();
 
-      let vertex_uv_containers = get_member_array(&drawables_instance, "vertexUvs");
-      let vertex_uv_containers: Vec<_> = vertex_uv_containers.iter()
+      let vertex_uv_containers: Vec<_> = get_member_array(&drawables_instance, "vertexUvs").iter()
         .map(|v| {
           let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
 
@@ -738,8 +746,7 @@ pub mod sys {
         })
         .collect();
 
-      let parent_part_indices = get_member_array(&drawables_instance, "parentPartIndices");
-      let parent_part_indices: Vec<_> = parent_part_indices.iter()
+      let parent_part_indices: Vec<_> = get_member_array(&drawables_instance, "parentPartIndices").iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
           (number > 0.0).then_some(number as usize)
@@ -747,14 +754,14 @@ pub mod sys {
         .collect();
 
       Self {
-        drawables_instance,
-
         ids,
         constant_flagsets,
         texture_indices,
         mask_containers,
         vertex_uv_containers,
         parent_part_indices,
+
+        drawables_instance,
       }
     }
 
@@ -777,7 +784,7 @@ pub mod sys {
   fn get_member_value<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> wasm_bindgen::JsValue {
     js_sys::Reflect::get(value, &name.as_ref().into()).unwrap_or_else(|e| panic!("No member {name:?}! {e:?}"))
   }
-  /// Requires `N` to be [`Clone`] to allow error reporting.
+  /// Requires `N` to be [`Clone`] to allow error reporting when panicking.
   fn get_member_function<N: AsRef<str> + Clone + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Function {
     get_member_value(value, name.clone()).dyn_into().unwrap_or_else(|e| panic!("member {name:?} not a Function! {e:?}"))
   }
@@ -790,11 +797,10 @@ pub mod sys {
 pub mod public_api_tests {
   // Use:
   // wasm-pack test --chrome
-  #[cfg(target_arch = "wasm32")]
-  wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-  #[cfg(target_arch = "wasm32")]
-  use wasm_bindgen_test::*;
+  if_wasm! {
+    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+    use wasm_bindgen_test::*;
+  }
 
   use super::*;
 
@@ -866,4 +872,18 @@ pub mod public_api_tests {
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn to_string(c_str_ptr: *const std::os::raw::c_char) -> String {
   std::ffi::CStr::from_ptr(c_str_ptr).to_str().unwrap().to_string()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[macro_export]
+macro_rules! if_wasm {
+  ($($code:tt)*) => {
+    $($code)*
+  }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! if_wasm {
+  ($($code:tt)*) => {};
 }
