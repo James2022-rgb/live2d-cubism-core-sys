@@ -229,30 +229,30 @@ mod platform_impl {
       let parameters: Vec<_> = unsafe {
         let count = csmGetParameterCount(csm_model);
 
-        let ids = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count as _);
-        let ids: Vec<String> = ids.iter().map(|&c_str_ptr| crate::to_string(c_str_ptr)).collect();
+        let ids: Vec<_> = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count as _).iter()
+          .map(|&c_str_ptr| crate::to_string(c_str_ptr))
+          .collect();
 
         let types = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count as _);
         let types: Vec<public_api::ParameterType> = types.iter()
           .map(|value| public_api::ParameterType::try_from(*value).unwrap())
           .collect();
 
-        // TODO: Check for unnecessary `to_vec` use?
-        let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count as _).to_vec();
-        let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _).to_vec();
-        let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _).to_vec();
+        let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count as _);
+        let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _);
+        let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _);
 
-        let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _).to_vec();
-        let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _).to_vec();
+        let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _);
+        let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _);
 
         let key_value_containers: Vec<_> = itertools::izip!(key_counts, key_value_ptrs)
-          .map(|(key_count, key_value_ptr)| {
+          .map(|(&key_count, &key_value_ptr)| {
             std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec()
           })
           .collect();
 
         itertools::izip!(ids, types, minimum_values, maximum_values, default_values, key_value_containers)
-          .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
+          .map(|(id, ty, &minimum_value, &maximum_value, &default_value, key_value_container)| {
             public_api::Parameter {
               id,
               ty,
@@ -267,8 +267,9 @@ mod platform_impl {
       let parts: Vec<_> = unsafe {
         let count = csmGetPartCount(csm_model);
 
-        let ids = std::slice::from_raw_parts(csmGetPartIds(csm_model), count as _).to_vec();
-        let ids: Vec<String> = ids.iter().map(|&c_str_ptr| crate::to_string(c_str_ptr)).collect();
+        let ids: Vec<_> = std::slice::from_raw_parts(csmGetPartIds(csm_model), count as _).iter()
+          .map(|&c_str_ptr| crate::to_string(c_str_ptr))
+          .collect();
 
         let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetPartParentPartIndices(csm_model), count as _).iter()
           .map(|&value| (value > 0).then_some(value as usize)).collect();
@@ -286,8 +287,9 @@ mod platform_impl {
       let drawables = unsafe {
         let count = csmGetDrawableCount(csm_model);
 
-        let ids = std::slice::from_raw_parts(csmGetDrawableIds(csm_model), count as _).to_vec();
-        let ids: Vec<String> = ids.iter().map(|&c_str_ptr| crate::to_string(c_str_ptr)).collect();
+        let ids: Vec<_> = std::slice::from_raw_parts(csmGetDrawableIds(csm_model), count as _).iter()
+          .map(|&c_str_ptr| crate::to_string(c_str_ptr))
+          .collect();
 
         let constant_flagsets: Vec<_> = std::slice::from_raw_parts(csmGetDrawableConstantFlags(csm_model), count as _).iter()
           .map(|value| public_api::ConstantDrawableFlagSet::new(*value).unwrap())
