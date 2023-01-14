@@ -79,10 +79,10 @@ mod public_api {
 
   /// Cubism model.
   pub struct Model {
-    pub(super) canvas_info: CanvasInfo,
-    pub(super) parameters: Vec<Parameter>,
-    pub(super) parts: Vec<Part>,
-    pub(super) drawables: Vec<Drawable>,
+    pub canvas_info: CanvasInfo,
+    pub parameters: Vec<Parameter>,
+    pub parts: Vec<Part>,
+    pub drawables: Vec<Drawable>,
     pub(super) inner: platform_impl::PlatformModel,
   }
 
@@ -135,16 +135,12 @@ mod public_api {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod platform_impl {
-  #![allow(non_upper_case_globals)]
-  #![allow(non_camel_case_types)]
-  #![allow(non_snake_case)]
-  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
   use std::sync::Arc;
 
   use crate::memory::AlignedStorage;
 
   use super::public_api;
+  use super::sys::*;
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore;
@@ -358,6 +354,7 @@ mod platform_impl {
   use std::sync::Arc;
 
   use super::public_api;
+  use super::sys::*;
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore {
@@ -373,14 +370,8 @@ mod platform_impl {
 
       let js_moc = self.js_cubism_core.moc_from_js_array_buffer(array.buffer());
 
-      let moc_version = self.js_cubism_core.csmGetMocVersion.call2(
-        &self.js_cubism_core.version_class, &js_moc.moc_instance, array.buffer().as_ref()
-      )
-      .unwrap().as_f64().unwrap() as u32;
-      let moc_version = public_api::MocVersion::try_from(moc_version).ok()?; // TODO: Error.
-
       public_api::Moc {
-        version: moc_version,
+        version: js_moc.version,
         inner: PlatformMoc {
           js_moc,
           js_cubism_core: Arc::clone(&self.js_cubism_core),
@@ -418,15 +409,31 @@ mod platform_impl {
   pub struct PlatformModel {
     js_model: JsModel,
   }
+}
 
+/// Direct bindings to the C interface of Live2D Cubism SDK Core for Native.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sys {
+  #![allow(non_upper_case_globals)]
+  #![allow(non_camel_case_types)]
+  #![allow(non_snake_case)]
+  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
+/// Not-so-direct bindings to the JavaScript interface of Live2D Cubism SDK Core for Web.
+#[cfg(target_arch = "wasm32")]
+pub mod sys {
   const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Core/live2dcubismcore.js"));
 
   use wasm_bindgen::JsCast as _;
 
+  use super::public_api;
+
+  #[allow(non_snake_case)]
   #[derive(Debug)]
   pub struct JsLive2DCubismCore {
-    cubism_version: public_api::CubismVersion,
-    latest_supported_moc_version: public_api::MocVersion,
+    pub cubism_version: public_api::CubismVersion,
+    pub latest_supported_moc_version: public_api::MocVersion,
 
     /// The `Live2DCubismCore` namespace object.
     live2d_cubism_core_namespace: wasm_bindgen::JsValue,
@@ -449,18 +456,19 @@ mod platform_impl {
 
   #[derive(Debug)]
   pub struct JsMoc {
+    pub version: public_api::MocVersion,
     /// The `Live2DCubismCore.Moc` class object.
     moc_class: wasm_bindgen::JsValue,
     /// An `Live2DCubismCore.Moc` instance object, acquired through the `Live2DCubismCore.Moc.fromArrayBuffer` static method.
     moc_instance: wasm_bindgen::JsValue,
   }
   pub struct JsModel {
-    /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
-    model_instance: wasm_bindgen::JsValue,
     pub canvas_info: public_api::CanvasInfo,
     pub parameters: JsParameters,
     pub parts: JsParts,
     pub drawables: JsDrawables,
+    /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
+    model_instance: wasm_bindgen::JsValue,
   }
 
   pub struct JsParameters {
@@ -542,11 +550,14 @@ mod platform_impl {
 
   impl JsLive2DCubismCore {
     pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
-      // `Version.csmGetMocVersion` requires a `Moc`, unlike `csmGetMocVersion` in the Native SDK.
+      // `Version.csmGetMocVersion` requires a `Moc`, unlike the `csmGetMocVersion` in the Native SDK.
       let moc_instance = self.fromArrayBuffer.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
       assert!(!moc_instance.is_undefined());
 
+      let version = self.get_moc_version(&moc_instance, &array_buffer);
+
       JsMoc {
+        version,
         moc_class: self.moc_class.clone(),
         moc_instance,
      }
@@ -556,6 +567,15 @@ mod platform_impl {
       array.copy_from(bytes);
 
       self.moc_from_js_array_buffer(array.buffer())
+    }
+
+    /// Equivalent to `csmGetMocVersion`.
+    pub fn get_moc_version(&self, js_moc_instance: &wasm_bindgen::JsValue, array_buffer: &js_sys::ArrayBuffer) -> public_api::MocVersion {
+      let moc_version = self.csmGetMocVersion.call2(
+        &self.version_class, js_moc_instance, array_buffer.as_ref()
+      )
+      .unwrap().as_f64().unwrap() as u32;
+      public_api::MocVersion::try_from(moc_version).unwrap()
     }
 
     pub fn model_from_moc(&self, moc: &JsMoc) -> JsModel {
@@ -580,11 +600,11 @@ mod platform_impl {
       let drawables = JsDrawables::from_drawables_instance(get_member_value(&model_instance, "drawables"));
 
       JsModel {
-        model_instance,
         canvas_info,
         parameters,
         parts,
         drawables,
+        model_instance,
       }
     }
   }
@@ -625,7 +645,7 @@ mod platform_impl {
       }
     }
 
-    fn to_aos(&self) -> Vec<public_api::Parameter> {
+    pub fn to_aos(&self) -> Vec<public_api::Parameter> {
       itertools::izip!(&self.ids, &self.types, &self.minimum_values, &self.maximum_values, &self.default_values, &self.key_value_containers)
         .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
           public_api::Parameter {
@@ -661,7 +681,7 @@ mod platform_impl {
       }
     }
 
-    fn to_aos(&self) -> Vec<public_api::Part> {
+    pub fn to_aos(&self) -> Vec<public_api::Part> {
       itertools::izip!(&self.ids, &self.parent_part_indices)
         .map(|(id, parent_part_index)| {
           public_api::Part {
@@ -738,7 +758,7 @@ mod platform_impl {
       }
     }
 
-    fn to_aos(&self) -> Vec<public_api::Drawable> {
+    pub fn to_aos(&self) -> Vec<public_api::Drawable> {
       itertools::izip!(&self.ids, &self.constant_flagsets, &self.texture_indices, &self.mask_containers, &self.vertex_uv_containers, &self.parent_part_indices)
         .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index)| {
           public_api::Drawable {
