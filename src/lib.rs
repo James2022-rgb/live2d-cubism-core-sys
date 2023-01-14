@@ -398,49 +398,9 @@ mod platform_impl {
       let js_model = self.js_cubism_core.model_from_moc(&self.js_moc);
 
       let canvas_info = js_model.canvas_info;
-      let parameters: Vec<_> = {
-        let parameters = &js_model.parameters;
-
-        itertools::izip!(parameters.ids(), parameters.types(), parameters.minimum_values(), parameters.maximum_values(), parameters.default_values(), parameters.key_value_containers())
-          .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
-            public_api::Parameter {
-              id: id.clone(),
-              ty: *ty,
-              value_range: *minimum_value..*maximum_value,
-              default_value: *default_value,
-              keys: key_value_container.clone(),
-            }
-          })
-          .collect()
-      };
-      let parts = {
-        let parts = &js_model.parts;
-
-        itertools::izip!(parts.ids(), parts.parent_part_indices())
-          .map(|(id, parent_part_index)| {
-            public_api::Part {
-              id: id.clone(),
-              parent_part_index: *parent_part_index,
-            }
-          })
-          .collect()
-      };
-      let drawables = {
-        let drawables = &js_model.drawables;
-
-        itertools::izip!(drawables.ids(), drawables.constant_flagsets(), drawables.texture_indices(), drawables.mask_containers(), drawables.vertex_uv_containers(), drawables.parent_part_indices())
-          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index)| {
-            public_api::Drawable {
-              id: id.clone(),
-              constant_flags: *constant_flagset,
-              texture_index: *texture_index,
-              masks: mask_container.clone(),
-              vertex_uvs: vertex_uv_container.clone(),
-              parent_part_index: *parent_part_index,
-            }
-          })
-          .collect()
-      };
+      let parameters = js_model.parameters.to_aos();
+      let parts = js_model.parts.to_aos();
+      let drawables = js_model.drawables.to_aos();
 
       public_api::Model {
         inner: PlatformModel {
@@ -497,12 +457,12 @@ mod platform_impl {
     pub parts: JsParts,
     pub drawables: JsDrawables,
   }
+
   pub struct JsParameters {
     /// The `parameters` member variable of a `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Parameters` class object.
     parameters_instance: wasm_bindgen::JsValue,
 
-    count: u32,
     ids: Vec<String>,
     types: Vec<public_api::ParameterType>,
     minimum_values: Vec<f32>,
@@ -515,7 +475,6 @@ mod platform_impl {
     /// An instance of `Live2DCubismCore.Parts` class object.
     parts_instance: wasm_bindgen::JsValue,
 
-    count: u32,
     ids: Vec<String>,
     parent_part_indices: Vec<Option<usize>>
   }
@@ -524,7 +483,6 @@ mod platform_impl {
     /// An instance of `Live2DCubismCore.Drawables` class object.
     drawables_instance: wasm_bindgen::JsValue,
 
-    count: u32,
     ids: Vec<String>,
     constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
     texture_indices: Vec<usize>,
@@ -629,52 +587,7 @@ mod platform_impl {
   }
 
   impl JsParameters {
-    /// Equivalent to `csmGetParameterCount`.
-    pub fn count(&self) -> u32 { self.count }
-    /// Equivalent to `csmGetParameterIds`.
-    pub fn ids(&self) -> &[String] { &self.ids }
-    /// Equivalent to `csmGetParameterTypes`.
-    pub fn types(&self) -> &[public_api::ParameterType] { &self.types }
-    /// Equivalent to `csmGetParameterMinimumValues`.
-    pub fn minimum_values(&self) -> &[f32] { &self.minimum_values }
-    /// Equivalent to `csmGetParameterMaximumValues`.
-    pub fn maximum_values(&self) -> &[f32] { &self.maximum_values }
-    /// Equivalent to `csmGetParameterDefaultValues`.
-    pub fn default_values(&self) -> &[f32] { &self.default_values }
-    /// Equivalent to `csmGetParameterKeyCounts` and `csmGetParameterKeyValues`.
-    pub fn key_value_containers(&self) -> &Vec<Vec<f32>> { &self.key_value_containers }
-  }
-
-  impl JsParts {
-    /// Equivalent to `csmGetPartCount`.
-    pub fn count(&self) -> u32 { self.count }
-    /// Equivalent to `csmGetPartIds`.
-    pub fn ids(&self) -> &[String] { &self.ids }
-    // Equivalent to `csmGetPartParentPartIndices`.
-    pub fn parent_part_indices(&self) -> &[Option<usize>] { &self.parent_part_indices }
-  }
-
-  impl JsDrawables {
-    /// Equivalent to `csmGetDrawableCount`.
-    pub fn count(&self) -> u32 { self.count }
-    /// Equivalent to `csmGetDrawableIds`.
-    pub fn ids(&self) -> &[String] { &self.ids }
-    /// Equivalent to `csmGetDrawableConstantFlags`.
-    pub fn constant_flagsets(&self) -> &[public_api::ConstantDrawableFlagSet] { &self.constant_flagsets }
-    /// Equivalent to `csmGetDrawableTextureIndices`.
-    pub fn texture_indices(&self) -> &[usize] { &self.texture_indices }
-    /// Equivalent to `csmGetDrawableMaskCounts` and `csmGetDrawableMasks`.
-    pub fn mask_containers(&self) -> &[Vec<usize>] { &self.mask_containers }
-    /// Equivalent to `csmGetDrawableVertexUvs`.
-    pub fn vertex_uv_containers(&self) -> &[Vec<public_api::Vector2>] { &self.vertex_uv_containers }
-    // Equivalent to `csmGetDrawableParentPartIndices`.
-    pub fn parent_part_indices(&self) -> &[Option<usize>] { &self.parent_part_indices }
-  }
-
-  impl JsParameters {
     fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
-      let count = get_member_value(&parameters_instance, "count").as_f64().unwrap() as u32;
-
       let ids = get_member_array(&parameters_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
@@ -700,7 +613,6 @@ mod platform_impl {
       Self {
         parameters_instance,
 
-        count,
         ids,
         types,
         minimum_values,
@@ -709,12 +621,24 @@ mod platform_impl {
         key_value_containers,
       }
     }
+
+    fn to_aos(&self) -> Vec<public_api::Parameter> {
+      itertools::izip!(&self.ids, &self.types, &self.minimum_values, &self.maximum_values, &self.default_values, &self.key_value_containers)
+        .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
+          public_api::Parameter {
+            id: id.clone(),
+            ty: *ty,
+            value_range: *minimum_value..*maximum_value,
+            default_value: *default_value,
+            keys: key_value_container.clone(),
+          }
+        })
+        .collect()
+    }
   }
 
   impl JsParts {
     fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
-      let count = get_member_value(&parts_instance, "count").as_f64().unwrap() as u32;
-
       let ids = get_member_array(&parts_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
@@ -729,17 +653,25 @@ mod platform_impl {
       Self {
         parts_instance,
 
-        count,
         ids,
         parent_part_indices,
       }
+    }
+
+    fn to_aos(&self) -> Vec<public_api::Part> {
+      itertools::izip!(&self.ids, &self.parent_part_indices)
+        .map(|(id, parent_part_index)| {
+          public_api::Part {
+            id: id.clone(),
+            parent_part_index: *parent_part_index,
+          }
+        })
+        .collect()
     }
   }
 
   impl JsDrawables {
     fn from_drawables_instance(drawables_instance: wasm_bindgen::JsValue) -> Self {
-      let count = get_member_value(&drawables_instance, "count").as_f64().unwrap() as u32;
-
       let ids = get_member_array(&drawables_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
@@ -794,7 +726,6 @@ mod platform_impl {
       Self {
         drawables_instance,
 
-        count,
         ids,
         constant_flagsets,
         texture_indices,
@@ -802,6 +733,21 @@ mod platform_impl {
         vertex_uv_containers,
         parent_part_indices,
       }
+    }
+
+    fn to_aos(&self) -> Vec<public_api::Drawable> {
+      itertools::izip!(&self.ids, &self.constant_flagsets, &self.texture_indices, &self.mask_containers, &self.vertex_uv_containers, &self.parent_part_indices)
+        .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, parent_part_index)| {
+          public_api::Drawable {
+            id: id.clone(),
+            constant_flags: *constant_flagset,
+            texture_index: *texture_index,
+            masks: mask_container.clone(),
+            vertex_uvs: vertex_uv_container.clone(),
+            parent_part_index: *parent_part_index,
+          }
+        })
+        .collect()
     }
   }
 
@@ -892,120 +838,6 @@ pub mod public_api_tests {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn cubism_core_basic_use() {
-    unsafe {
-      let core_version = csmGetVersion();
-      let latest_moc_version = csmGetLatestMocVersion();
-
-      println!("core_version: {}", core_version);
-      println!("latest_moc_version: {}", latest_moc_version);
-
-      let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_SDK_NATIVE_DIR"), "/AdditionalSamples/simple/runtime/simple.moc3"));
-
-      {
-        // Refer to: https://docs.live2d.com/cubism-sdk-manual/cubism-core-api-reference/#
-
-        use crate::memory::AlignedStorage;
-
-        const MOC_ALIGNMENT: usize = csmAlignofMoc as usize;
-        const MODEL_ALIGNMENT: usize = csmAlignofModel as usize;
-
-        let mut aligned_moc_storage = AlignedStorage::new(moc_bytes.len(), MOC_ALIGNMENT).unwrap();
-        aligned_moc_storage.copy_from_slice(moc_bytes);
-
-        let csm_moc = csmReviveMocInPlace(aligned_moc_storage.as_mut_ptr() as *mut _, aligned_moc_storage.len() as _);
-
-        let moc_model_storage_size = csmGetSizeofModel(csm_moc);
-
-        let mut aligned_model_storage = AlignedStorage::new(moc_model_storage_size as _, MODEL_ALIGNMENT).unwrap();
-
-        let csm_model = csmInitializeModelInPlace(csm_moc, aligned_model_storage.as_mut_ptr() as *mut _, moc_model_storage_size);
-
-        {
-          let count = csmGetParameterCount(csm_model);
-
-          let paramter_ids = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count as _);
-          let parameter_ids: Vec<String> = paramter_ids.iter().map(|&c_str_ptr| to_string(c_str_ptr)).collect();
-
-          let parameter_types = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count as _);
-
-          println!("Parameter count: {}", count);
-          println!("Parameter IDs: {:?}", parameter_ids);
-          println!("Parameter types: {:?}", parameter_types);
-        }
-        {
-          let count = csmGetPartCount(csm_model);
-
-          let part_ids = std::slice::from_raw_parts(csmGetPartIds(csm_model), count as _);
-          let part_ids: Vec<String> = part_ids.iter().map(|&c_str_ptr|to_string(c_str_ptr)).collect();
-
-          let part_opacities = std::slice::from_raw_parts(csmGetPartOpacities(csm_model), count as _);
-          let part_opacities = part_opacities.to_vec();
-
-          let part_parent_part_indices = std::slice::from_raw_parts(csmGetPartParentPartIndices(csm_model), count as _);
-          let part_parent_part_indices = part_parent_part_indices.to_vec();
-
-          println!("Part count: {}", count);
-          println!("Part IDs: {:?}", part_ids);
-          println!("Part opacities: {:?}", part_opacities);
-          println!("Part parent part indices: {:?}", part_parent_part_indices);
-        }
-        {
-          let count = csmGetDrawableCount(csm_model);
-
-          let drawable_ids = std::slice::from_raw_parts(csmGetDrawableIds(csm_model), count as _);
-          let drawable_ids: Vec<String> = drawable_ids.iter().map(|&c_str_ptr|to_string(c_str_ptr)).collect();
-
-          println!("Drawable count: {}", count);
-          println!("Drawable IDs: {:?}", drawable_ids);
-        }
-      }
-    }
-  }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[cfg(test)]
-pub mod tests {
-  wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-  use wasm_bindgen_test::*;
-
-  /*
-  #[wasm_bindgen_test]
-  fn cubism_core_basic_use() {
-    console_log::init_with_level(log::Level::Trace).unwrap();
-
-    let live2d_cubism_core = crate::platform_impl::JsLive2DCubismCore::default();
-
-    let core_version = live2d_cubism_core.core_version();
-    let latest_moc_version = live2d_cubism_core.latest_supported_moc_version();
-
-    log::info!("core_version: {core_version}");
-    log::info!("latest_moc_version: {latest_moc_version}");
-
-    let moc_bytes = include_bytes!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/AdditionalSamples/simple/runtime/simple.moc3"));
-    let moc = live2d_cubism_core.moc_from_bytes(moc_bytes);
-
-    let model = live2d_cubism_core.model_from_moc(&moc);
-
-    log::info!("Parameter count: {}", model.parameters.count());
-    log::info!("Parameter IDs: {:?}", model.parameters.ids());
-    log::info!("Parameter types: {:?}", model.parameters.types());
-
-    log::info!("Part count: {}", model.parts.count());
-    log::info!("Part IDs: {:?}", model.parts.ids());
-    log::info!("Part opacities: {:?}", model.parts.opacities());
-    log::info!("Part parent part indices: {:?}", model.parts.parent_part_indices());
-  }
-  */
-}
-
 unsafe fn to_string(c_str_ptr: *const std::os::raw::c_char) -> String {
   std::ffi::CStr::from_ptr(c_str_ptr).to_str().unwrap().to_string()
 }
