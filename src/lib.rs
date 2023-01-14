@@ -538,24 +538,19 @@ mod platform_impl {
       let code = format!("{LIVE2DCUBISMCORE_JS_STR}\n Live2DCubismCore");
       let live2d_cubism_core_namespace = js_sys::eval(&code).expect("Failed to evaluate synthesized JavaScript code!");
 
-      let version_class = js_sys::Reflect::get(&live2d_cubism_core_namespace, &"Version".into()).unwrap();
+      let version_class = get_member_value(&live2d_cubism_core_namespace, "Version");
 
-      let csmGetVersion = js_sys::Reflect::get(&version_class, &"csmGetVersion".into()).unwrap()
-        .dyn_into::<js_sys::Function>().unwrap();
-      let csmGetLatestMocVersion = js_sys::Reflect::get(&version_class, &"csmGetLatestMocVersion".into()).unwrap()
-        .dyn_into::<js_sys::Function>().unwrap();
-      let csmGetMocVersion = js_sys::Reflect::get(&version_class, &"csmGetMocVersion".into()).unwrap()
-        .dyn_into::<js_sys::Function>().unwrap();
+      let csmGetVersion = get_member_function(&version_class, "csmGetVersion");
+      let csmGetLatestMocVersion = get_member_function(&version_class, "csmGetLatestMocVersion");
+      let csmGetMocVersion = get_member_function(&version_class, "csmGetMocVersion");
 
-      let moc_class = js_sys::Reflect::get(&live2d_cubism_core_namespace, &"Moc".into()).unwrap();
+      let moc_class = get_member_value(&live2d_cubism_core_namespace, "Moc");
 
-      let fromArrayBuffer = js_sys::Reflect::get(&moc_class, &"fromArrayBuffer".into()).unwrap()
-        .dyn_into::<js_sys::Function>().unwrap();
+      let fromArrayBuffer = get_member_function(&moc_class, "fromArrayBuffer");
 
-      let model_class = js_sys::Reflect::get(&live2d_cubism_core_namespace, &"Model".into()).unwrap();
+      let model_class = get_member_value(&live2d_cubism_core_namespace, "Model");
 
-      let fromMoc = js_sys::Reflect::get(&model_class, &"fromMoc".into()).unwrap()
-        .dyn_into::<js_sys::Function>().unwrap();
+      let fromMoc = get_member_function(&model_class, "fromMoc");
 
       Self {
         live2d_cubism_core_namespace,
@@ -606,12 +601,12 @@ mod platform_impl {
       let model_instance = self.fromMoc.call1(&self.moc_class, moc.moc_instance.as_ref()).unwrap();
 
       let canvas_info = {
-        let canvas_info_instance = js_sys::Reflect::get(&model_instance, &"canvasinfo".into()).unwrap();
-        let canvas_width = js_sys::Reflect::get(&canvas_info_instance, &"CanvasWidth".into()).unwrap().as_f64().unwrap() as f32;
-        let canvas_height = js_sys::Reflect::get(&canvas_info_instance, &"CanvasHeight".into()).unwrap().as_f64().unwrap() as f32;
-        let canvas_origin_x = js_sys::Reflect::get(&canvas_info_instance, &"CanvasOriginX".into()).unwrap().as_f64().unwrap() as f32;
-        let canvas_origin_y = js_sys::Reflect::get(&canvas_info_instance, &"CanvasOriginY".into()).unwrap().as_f64().unwrap() as f32;
-        let pixels_per_unit = js_sys::Reflect::get(&canvas_info_instance, &"PixelsPerUnit".into()).unwrap().as_f64().unwrap() as f32;
+        let canvas_info_instance = get_member_value(&model_instance, "canvasinfo");
+        let canvas_width = get_member_value(&canvas_info_instance, "CanvasWidth").as_f64().unwrap() as f32;
+        let canvas_height = get_member_value(&canvas_info_instance, "CanvasHeight").as_f64().unwrap() as f32;
+        let canvas_origin_x = get_member_value(&canvas_info_instance, "CanvasOriginX").as_f64().unwrap() as f32;
+        let canvas_origin_y = get_member_value(&canvas_info_instance, "CanvasOriginY").as_f64().unwrap() as f32;
+        let pixels_per_unit = get_member_value(&canvas_info_instance, "PixelsPerUnit").as_f64().unwrap() as f32;
         public_api::CanvasInfo {
           size_in_pixels: (canvas_width, canvas_height),
           origin_in_pixels: (canvas_origin_x, canvas_origin_y),
@@ -619,9 +614,9 @@ mod platform_impl {
         }
       };
 
-      let parameters = JsParameters::from_parameters_instance(js_sys::Reflect::get(&model_instance, &"parameters".into()).unwrap());
-      let parts = JsParts::from_parts_instance(js_sys::Reflect::get(&model_instance, &"parts".into()).unwrap());
-      let drawables = JsDrawables::from_drawables_instance(js_sys::Reflect::get(&model_instance, &"drawables".into()).unwrap());
+      let parameters = JsParameters::from_parameters_instance(get_member_value(&model_instance, "parameters"));
+      let parts = JsParts::from_parts_instance(get_member_value(&model_instance, "parts"));
+      let drawables = JsDrawables::from_drawables_instance(get_member_value(&model_instance, "drawables"));
 
       JsModel {
         model_instance,
@@ -678,25 +673,29 @@ mod platform_impl {
 
   impl JsParameters {
     fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
-      let count = js_sys::Reflect::get(&parameters_instance, &"count".into()).unwrap().as_f64().unwrap() as u32;
+      let count = get_member_value(&parameters_instance, "count").as_f64().unwrap() as u32;
 
-      let ids = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"ids".into()).unwrap());
+      let ids = get_member_array(&parameters_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
-      let types = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"types".into()).unwrap());
+      let types = get_member_array(&parameters_instance, "types");
       let types = types.iter().map(|value| public_api::ParameterType::try_from(value.as_f64().unwrap() as i32).unwrap()).collect();
 
-      let minimum_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"minimumValues".into()).unwrap());
+      let minimum_values = get_member_array(&parameters_instance, "minimumValues");
       let minimum_values = minimum_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
 
-      let maximum_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"maximumValues".into()).unwrap());
+      let maximum_values = get_member_array(&parameters_instance, "maximumValues");
       let maximum_values = maximum_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
 
-      let default_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"defaultValues".into()).unwrap());
+      let default_values = get_member_array(&parameters_instance, "defaultValues");
       let default_values = default_values.iter().map(|value| value.as_f64().unwrap() as f32).collect();
 
-      let key_values = js_sys::Array::from(&js_sys::Reflect::get(&parameters_instance, &"keyValues".into()).unwrap());
-      let key_value_containers: Vec<Vec<f32>> = key_values.iter().map(|value| js_sys::Array::from(&value).iter().map(|value| value.as_f64().unwrap() as f32).collect()).collect();
+      let key_values = get_member_array(&parameters_instance, "keyValues");
+      let key_value_containers: Vec<Vec<f32>> = key_values.iter()
+        .map(|value| {
+          js_sys::Array::from(&value).iter().map(|value| value.as_f64().unwrap() as f32).collect()
+        })
+        .collect();
 
       Self {
         parameters_instance,
@@ -714,12 +713,12 @@ mod platform_impl {
 
   impl JsParts {
     fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
-      let count = js_sys::Reflect::get(&parts_instance, &"count".into()).unwrap().as_f64().unwrap() as u32;
+      let count = get_member_value(&parts_instance, "count").as_f64().unwrap() as u32;
 
-      let ids = js_sys::Array::from(&js_sys::Reflect::get(&parts_instance, &"ids".into()).unwrap());
+      let ids = get_member_array(&parts_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
-      let parent_part_indices = js_sys::Array::from(&js_sys::Reflect::get(&parts_instance, &"parentIndices".into()).unwrap());
+      let parent_part_indices = get_member_array(&parts_instance, "parentIndices");
       let parent_part_indices = parent_part_indices.iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
@@ -739,22 +738,22 @@ mod platform_impl {
 
   impl JsDrawables {
     fn from_drawables_instance(drawables_instance: wasm_bindgen::JsValue) -> Self {
-      let count = js_sys::Reflect::get(&drawables_instance, &"count".into()).unwrap().as_f64().unwrap() as u32;
+      let count = get_member_value(&drawables_instance, "count").as_f64().unwrap() as u32;
 
-      let ids = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"ids".into()).unwrap());
+      let ids = get_member_array(&drawables_instance, "ids");
       let ids = ids.iter().map(|value| value.as_string().unwrap()).collect();
 
-      let constant_flagsets = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"constantFlags".into()).unwrap());
+      let constant_flagsets = get_member_array(&drawables_instance, "constantFlags");
       let constant_flagsets: Vec<_> = constant_flagsets.iter()
         .map(|value| public_api::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap())
         .collect();
 
-      let texture_indices = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"textureIndices".into()).unwrap());
+      let texture_indices = get_member_array(&drawables_instance, "textureIndices");
       let texture_indices: Vec<_> = texture_indices.iter()
         .map(|value| value.as_f64().unwrap() as usize)
         .collect();
 
-      let mask_containers = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"masks".into()).unwrap());
+      let mask_containers = get_member_array(&drawables_instance, "masks");
       let mask_containers: Vec<_> = mask_containers.iter()
         .map(|mask_container| {
           js_sys::Array::from(&mask_container).iter()
@@ -763,7 +762,7 @@ mod platform_impl {
         })
         .collect();
 
-      let vertex_uv_containers = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"vertexUvs".into()).unwrap());
+      let vertex_uv_containers = get_member_array(&drawables_instance, "vertexUvs");
       let vertex_uv_containers: Vec<_> = vertex_uv_containers.iter()
         .map(|v| {
           let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
@@ -784,7 +783,7 @@ mod platform_impl {
         })
         .collect();
 
-      let parent_part_indices = js_sys::Array::from(&js_sys::Reflect::get(&drawables_instance, &"parentPartIndices".into()).unwrap());
+      let parent_part_indices = get_member_array(&drawables_instance, "parentPartIndices");
       let parent_part_indices: Vec<_> = parent_part_indices.iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
@@ -804,6 +803,17 @@ mod platform_impl {
         parent_part_indices,
       }
     }
+  }
+
+  fn get_member_value<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> wasm_bindgen::JsValue {
+    js_sys::Reflect::get(value, &name.as_ref().into()).unwrap_or_else(|e| panic!("No member {name:?}! {e:?}"))
+  }
+  /// Requires `N` to be [`Clone`] to allow error reporting.
+  fn get_member_function<N: AsRef<str> + Clone + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Function {
+    get_member_value(value, name.clone()).dyn_into().unwrap_or_else(|e| panic!("member {name:?} not a Function! {e:?}"))
+  }
+  fn get_member_array<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Array {
+    js_sys::Array::from(&get_member_value(value, name))
   }
 }
 
