@@ -85,6 +85,13 @@ mod public_api {
     pub drawables: Vec<Drawable>,
     pub(super) inner: platform_impl::PlatformModel,
   }
+  impl std::ops::Deref for Model {
+    type Target = platform_impl::PlatformModel;
+    fn deref(&self) -> &Self::Target { &self.inner }
+  }
+  impl std::ops::DerefMut for Model {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.inner }
+  }
 
   #[derive(Debug, Clone, Copy)]
   /// Model canvas.
@@ -228,8 +235,7 @@ mod platform_impl {
           .map(|&c_str_ptr| crate::to_string(c_str_ptr))
           .collect();
 
-        let types = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count as _);
-        let types: Vec<public_api::ParameterType> = types.iter()
+        let types: Vec<_> = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count as _).iter()
           .map(|value| public_api::ParameterType::try_from(*value).unwrap())
           .collect();
 
@@ -358,6 +364,18 @@ mod platform_impl {
     /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
     moc_storage: Arc<AlignedStorage>,
   }
+  impl PlatformModel {
+    pub fn update(&mut self) {
+      unsafe {
+        csmUpdateModel(self.csm_model);
+      }
+    }
+    pub fn reset_drawable_dynamic_flags(&mut self) {
+      unsafe {
+        csmResetDrawableDynamicFlags(self.csm_model);
+      }
+    }
+  }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -421,6 +439,14 @@ mod platform_impl {
   pub struct PlatformModel {
     js_model: JsModel,
   }
+  impl PlatformModel {
+    pub fn update(&mut self) {
+      self.js_model.update();
+    }
+    pub fn reset_drawable_dynamic_flags(&mut self) {
+      self.js_model.reset_drawable_dynamic_flags();
+    }
+  }
 }
 
 /// Direct bindings to the C interface of Live2D Cubism SDK Core for Native.
@@ -464,6 +490,9 @@ pub mod sys {
     model_class: wasm_bindgen::JsValue,
     /// The `Live2DCubismCore.Model.fromMoc` static method.
     fromMoc: js_sys::Function,
+
+    /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
+    reset_dynamic_flags_method: js_sys::Function,
   }
 
   #[derive(Debug)]
@@ -474,6 +503,9 @@ pub mod sys {
     /// An `Live2DCubismCore.Moc` instance object, acquired through the `Live2DCubismCore.Moc.fromArrayBuffer` static method.
     moc_instance: wasm_bindgen::JsValue,
   }
+
+  // TODO: release.
+  #[derive(Debug)]
   pub struct JsModel {
     pub canvas_info: public_api::CanvasInfo,
     pub parameters: JsParameters,
@@ -482,8 +514,11 @@ pub mod sys {
 
     /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
     model_instance: wasm_bindgen::JsValue,
+    /// `Live2DCubismCore.Model.update` method.
+    update_method: js_sys::Function,
   }
 
+  #[derive(Debug)]
   pub struct JsParameters {
     pub ids: Vec<String>,
     pub types: Vec<public_api::ParameterType>,
@@ -496,6 +531,8 @@ pub mod sys {
     /// An instance of `Live2DCubismCore.Parameters` class object.
     parameters_instance: wasm_bindgen::JsValue,
   }
+
+  #[derive(Debug)]
   pub struct JsParts {
     pub ids: Vec<String>,
     pub parent_part_indices: Vec<Option<usize>>,
@@ -504,6 +541,8 @@ pub mod sys {
     /// An instance of `Live2DCubismCore.Parts` class object.
     parts_instance: wasm_bindgen::JsValue,
   }
+
+  #[derive(Debug)]
   pub struct JsDrawables {
     pub ids: Vec<String>,
     pub constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
@@ -516,6 +555,8 @@ pub mod sys {
     /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Drawables` class object.
     drawables_instance: wasm_bindgen::JsValue,
+    /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
+    reset_dynamic_flags_method: js_sys::Function,
   }
 
   impl Default for JsLive2DCubismCore {
@@ -544,6 +585,10 @@ pub mod sys {
       let model_class = get_member_value(&live2d_cubism_core_namespace, "Model");
       let fromMoc = get_member_function(&model_class, "fromMoc");
 
+      let drawables_class = get_member_value(&live2d_cubism_core_namespace, "Drawables");
+      let prototype = get_member_value(&drawables_class, "prototype");
+      let reset_dynamic_flags_method = get_member_function(&prototype, "resetDynamicFlags");
+
       Self {
         cubism_version,
         latest_supported_moc_version,
@@ -558,6 +603,8 @@ pub mod sys {
 
         model_class,
         fromMoc,
+
+        reset_dynamic_flags_method,
       }
     }
   }
@@ -596,6 +643,9 @@ pub mod sys {
     pub fn model_from_moc(&self, moc: &JsMoc) -> JsModel {
       let model_instance = self.fromMoc.call1(&self.moc_class, moc.moc_instance.as_ref()).unwrap();
 
+      let prototype = get_member_value(&self.model_class, "prototype");
+      let update_method = get_member_function(&prototype, "update");
+
       let canvas_info = {
         let canvas_info_instance = get_member_value(&model_instance, "canvasinfo");
         let canvas_width = get_member_value(&canvas_info_instance, "CanvasWidth").as_f64().unwrap() as f32;
@@ -603,6 +653,7 @@ pub mod sys {
         let canvas_origin_x = get_member_value(&canvas_info_instance, "CanvasOriginX").as_f64().unwrap() as f32;
         let canvas_origin_y = get_member_value(&canvas_info_instance, "CanvasOriginY").as_f64().unwrap() as f32;
         let pixels_per_unit = get_member_value(&canvas_info_instance, "PixelsPerUnit").as_f64().unwrap() as f32;
+
         public_api::CanvasInfo {
           size_in_pixels: (canvas_width, canvas_height),
           origin_in_pixels: (canvas_origin_x, canvas_origin_y),
@@ -612,15 +663,26 @@ pub mod sys {
 
       let parameters = JsParameters::from_parameters_instance(get_member_value(&model_instance, "parameters"));
       let parts = JsParts::from_parts_instance(get_member_value(&model_instance, "parts"));
-      let drawables = JsDrawables::from_drawables_instance(get_member_value(&model_instance, "drawables"));
+      let drawables = JsDrawables::from_drawables_instance(self.reset_dynamic_flags_method.clone(), get_member_value(&model_instance, "drawables"));
 
       JsModel {
         canvas_info,
         parameters,
         parts,
         drawables,
+
         model_instance,
+        update_method,
       }
+    }
+  }
+
+  impl JsModel {
+    pub fn update(&mut self) {
+      self.update_method.call0(&self.model_instance).unwrap();
+    }
+    pub fn reset_drawable_dynamic_flags(&mut self) {
+      self.drawables.reset_dynamic_flags_method.call0(&self.drawables.drawables_instance).unwrap();
     }
   }
 
@@ -715,7 +777,7 @@ pub mod sys {
   }
 
   impl JsDrawables {
-    fn from_drawables_instance(drawables_instance: wasm_bindgen::JsValue) -> Self {
+    fn from_drawables_instance(reset_dynamic_flags_method: js_sys::Function, drawables_instance: wasm_bindgen::JsValue) -> Self {
       let ids: Vec<_> = get_member_array(&drawables_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
         .collect();
@@ -769,6 +831,7 @@ pub mod sys {
         parent_part_indices,
 
         drawables_instance,
+        reset_dynamic_flags_method,
       }
     }
 
@@ -879,12 +942,15 @@ pub mod public_api_tests {
     let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
     log::info!("Moc version: {}", moc.version);
 
-    let model = moc.to_model();
+    let mut model = moc.to_model();
 
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);
     log::info!("{:?}", model.parts);
     log::info!("{:?}", model.drawables);
+
+    model.reset_drawable_dynamic_flags();
+    model.update();
   }
 
   #[cfg(not(target_arch = "wasm32"))]
