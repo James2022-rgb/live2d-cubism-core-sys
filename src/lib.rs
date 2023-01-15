@@ -60,21 +60,13 @@ mod public_api {
   }
   #[derive(Debug, Default)]
   pub struct CubismCore {
-    inner: platform_impl::PlatformCubismCore,
-  }
-  impl std::ops::Deref for CubismCore {
-    type Target = platform_impl::PlatformCubismCore;
-    fn deref(&self) -> &Self::Target { &self.inner }
+    pub(super) inner: platform_impl::PlatformCubismCore,
   }
 
   /// Cubism moc.
   pub struct Moc {
     pub version: MocVersion,
     pub(super) inner: platform_impl::PlatformMoc,
-  }
-  impl std::ops::Deref for Moc {
-    type Target = platform_impl::PlatformMoc;
-    fn deref(&self) -> &Self::Target { &self.inner }
   }
 
   /// Cubism model.
@@ -84,13 +76,6 @@ mod public_api {
     pub parts: Vec<Part>,
     pub drawables: Vec<Drawable>,
     pub(super) inner: platform_impl::PlatformModel,
-  }
-  impl std::ops::Deref for Model {
-    type Target = platform_impl::PlatformModel;
-    fn deref(&self) -> &Self::Target { &self.inner }
-  }
-  impl std::ops::DerefMut for Model {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.inner }
   }
 
   #[derive(Debug, Clone, Copy)]
@@ -165,7 +150,7 @@ mod platform_impl {
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore;
-  impl PlatformCubismCore {
+  impl public_api::CubismCore {
     pub fn version(&self) -> public_api::CubismVersion {
       public_api::CubismVersion(unsafe { csmGetVersion() })
     }
@@ -213,18 +198,18 @@ mod platform_impl {
     /// the memory blocks for all `csmModel`s generated from it.
     moc_storage: Arc<AlignedStorage>,
   }
-  impl PlatformMoc {
+  impl public_api::Moc {
     pub fn to_model(&self) -> public_api::Model {
       const MODEL_ALIGNMENT: usize = csmAlignofModel as usize;
 
       let storage_size = unsafe {
-        csmGetSizeofModel(self.csm_moc)
+        csmGetSizeofModel(self.inner.csm_moc)
       };
 
       let mut aligned_storage = AlignedStorage::new(storage_size as _, MODEL_ALIGNMENT).unwrap();
 
       let csm_model = unsafe {
-        csmInitializeModelInPlace(self.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
+        csmInitializeModelInPlace(self.inner.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
       };
 
       let canvas_info = unsafe {
@@ -361,7 +346,7 @@ mod platform_impl {
         drawable_count: drawables.len(),
         csm_model,
         model_storage: aligned_storage,
-        moc_storage: Arc::clone(&self.moc_storage),
+        moc_storage: Arc::clone(&self.inner.moc_storage),
       };
 
       public_api::Model {
@@ -381,26 +366,26 @@ mod platform_impl {
     /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
     moc_storage: Arc<AlignedStorage>,
   }
-  impl PlatformModel {
+  impl public_api::Model {
     pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
       unsafe {
-        std::slice::from_raw_parts(csmGetDrawableDynamicFlags(self.csm_model) as *const public_api::DynamicDrawableFlagSet, self.drawable_count)
+        std::slice::from_raw_parts(csmGetDrawableDynamicFlags(self.inner.csm_model) as *const public_api::DynamicDrawableFlagSet, self.inner.drawable_count)
       }
     }
     pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] {
       unsafe {
-        std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(self.csm_model) as *mut public_api::DynamicDrawableFlagSet, self.drawable_count)
+        std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(self.inner.csm_model) as *mut public_api::DynamicDrawableFlagSet, self.inner.drawable_count)
       }
     }
 
     pub fn update(&mut self) {
       unsafe {
-        csmUpdateModel(self.csm_model);
+        csmUpdateModel(self.inner.csm_model);
       }
     }
     pub fn reset_drawable_dynamic_flags(&mut self) {
       unsafe {
-        csmResetDrawableDynamicFlags(self.csm_model);
+        csmResetDrawableDynamicFlags(self.inner.csm_model);
       }
     }
   }
@@ -417,22 +402,22 @@ mod platform_impl {
   pub struct PlatformCubismCore {
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
-  impl PlatformCubismCore {
-    pub fn version(&self) -> public_api::CubismVersion { self.js_cubism_core.cubism_version }
-    pub fn latest_supported_moc_version(&self) -> public_api::MocVersion { self.js_cubism_core.latest_supported_moc_version }
+  impl public_api::CubismCore {
+    pub fn version(&self) -> public_api::CubismVersion { self.inner.js_cubism_core.cubism_version }
+    pub fn latest_supported_moc_version(&self) -> public_api::MocVersion { self.inner.js_cubism_core.latest_supported_moc_version }
 
     // TODO: Error
     pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<public_api::Moc> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
       array.copy_from(bytes);
 
-      let js_moc = self.js_cubism_core.moc_from_js_array_buffer(array.buffer());
+      let js_moc = self.inner.js_cubism_core.moc_from_js_array_buffer(array.buffer());
 
       public_api::Moc {
         version: js_moc.version,
         inner: PlatformMoc {
           js_moc,
-          js_cubism_core: Arc::clone(&self.js_cubism_core),
+          js_cubism_core: Arc::clone(&self.inner.js_cubism_core),
         },
       }.into()
     }
@@ -443,9 +428,9 @@ mod platform_impl {
     js_moc: JsMoc,
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
-  impl PlatformMoc {
+  impl public_api::Moc {
     pub fn to_model(&self) -> public_api::Model {
-      let js_model = self.js_cubism_core.model_from_moc(&self.js_moc);
+      let js_model = self.inner.js_cubism_core.model_from_moc(&self.inner.js_moc);
 
       let canvas_info = js_model.canvas_info;
       let parameters = js_model.parameters.to_aos();
@@ -467,19 +452,19 @@ mod platform_impl {
   pub struct PlatformModel {
     js_model: JsModel,
   }
-  impl PlatformModel {
+  impl public_api::Model {
     pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
-      self.js_model.dynamic_flags_scratch()
+      self.inner.js_model.dynamic_flags_scratch()
     }
     pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] {
-      self.js_model.dynamic_flags_scratch_mut()
+      self.inner.js_model.dynamic_flags_scratch_mut()
     }
 
     pub fn update(&mut self) {
-      self.js_model.update();
+      self.inner.js_model.update();
     }
     pub fn reset_drawable_dynamic_flags(&mut self) {
-      self.js_model.reset_drawable_dynamic_flags();
+      self.inner.js_model.reset_drawable_dynamic_flags();
     }
   }
 }
