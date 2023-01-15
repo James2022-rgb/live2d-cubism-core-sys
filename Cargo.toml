@@ -11,12 +11,13 @@ build = "src/build.rs"
 
 [dependencies]
 log = "0.4"
+static_assertions = "1.1.0"
 shrinkwraprs = "0.3.0"
 derive_more = "0.99.17"
 num_enum = "0.5.7"
 flagset = "0.4.3"
-itertools = "0.10.5"
 mint = "0.5.9"
+itertools = "0.10.5"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.83"

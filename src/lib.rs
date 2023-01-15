@@ -2,6 +2,7 @@
 mod memory;
 
 mod public_api {
+  use static_assertions::{assert_eq_align, assert_eq_size};
   use shrinkwraprs::Shrinkwrap;
   use derive_more::Display;
   use num_enum::TryFromPrimitive;
@@ -124,6 +125,8 @@ mod public_api {
       IsInvertedMask,
     }
   }
+  assert_eq_align!(ConstantDrawableFlagSet, u8);
+  assert_eq_size!(ConstantDrawableFlagSet, u8);
 
   pub type DynamicDrawableFlagSet = FlagSet<DynamicDrawableFlags>;
   flags! {
@@ -137,6 +140,8 @@ mod public_api {
       BlendColorDidChange,
     }
   }
+  assert_eq_align!(DynamicDrawableFlagSet, u8);
+  assert_eq_size!(DynamicDrawableFlagSet, u8);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
