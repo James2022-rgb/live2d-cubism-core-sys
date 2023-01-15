@@ -76,6 +76,7 @@ mod public_api {
     pub parameters: Vec<Parameter>,
     pub parts: Vec<Part>,
     pub drawables: Vec<Drawable>,
+    pub dynamic: ModelDynamic,
     pub(super) inner: platform_impl::PlatformModel,
   }
 
@@ -114,6 +115,12 @@ mod public_api {
     pub vertex_uvs: Vec<Vector2>,
     pub triangle_indices: Vec<u16>,
     pub parent_part_index: Option<usize>,
+  }
+
+  /// Dynamic states of a model.
+  #[derive(Debug)]
+  pub struct ModelDynamic {
+    pub(super) inner: platform_impl::PlatformModelDynamic,
   }
 
   pub type ConstantDrawableFlagSet = FlagSet<ConstantDrawableFlags>;
@@ -347,6 +354,13 @@ mod platform_impl {
           .collect()
       };
 
+      let dynamic = public_api::ModelDynamic {
+        inner: PlatformModelDynamic {
+          drawable_count: drawables.len(),
+          csm_model,
+        }
+      };
+
       let inner = PlatformModel {
         drawable_count: drawables.len(),
         csm_model,
@@ -359,6 +373,7 @@ mod platform_impl {
         parameters,
         parts,
         drawables,
+        dynamic,
         inner,
       }
     }
@@ -371,7 +386,14 @@ mod platform_impl {
     /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
     moc_storage: Arc<AlignedStorage>,
   }
-  impl public_api::Model {
+
+  #[derive(Debug)]
+  pub struct PlatformModelDynamic {
+    drawable_count: usize,
+    csm_model: *mut csmModel,
+  }
+
+  impl public_api::ModelDynamic {
     pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
       unsafe {
         std::slice::from_raw_parts(csmGetDrawableDynamicFlags(self.inner.csm_model) as *const public_api::DynamicDrawableFlagSet, self.inner.drawable_count)
@@ -442,22 +464,31 @@ mod platform_impl {
       let parts = js_model.parts.to_aos();
       let drawables = js_model.drawables.to_aos();
 
+      let dynamic = public_api::ModelDynamic {
+        inner: PlatformModelDynamic {
+          js_model,
+        }
+      };
+
       public_api::Model {
         canvas_info,
         parameters,
         parts,
         drawables,
-        inner: PlatformModel {
-          js_model,
-        },
+        dynamic,
+        inner: PlatformModel,
       }
     }
   }
 
-  pub struct PlatformModel {
+  pub struct PlatformModel;
+
+  #[derive(Debug)]
+  pub struct PlatformModelDynamic {
     js_model: JsModel,
   }
-  impl public_api::Model {
+
+  impl public_api::ModelDynamic {
     pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
       self.inner.js_model.dynamic_flags_scratch()
     }
@@ -1018,12 +1049,12 @@ pub mod public_api_tests {
     log::info!("{:?}", model.parts);
     log::info!("{:?}", model.drawables);
 
-    log::info!("{:?}", model.drawable_dynamic_flags()[0]);
+    log::info!("{:?}", model.dynamic.drawable_dynamic_flags()[0]);
 
-    model.reset_drawable_dynamic_flags();
-    model.update();
+    model.dynamic.reset_drawable_dynamic_flags();
+    model.dynamic.update();
 
-    log::info!("{:?}", model.drawable_dynamic_flags()[0]);
+    log::info!("{:?}", model.dynamic.drawable_dynamic_flags()[0]);
   }
 
   #[cfg(not(target_arch = "wasm32"))]
