@@ -11,6 +11,7 @@ mod public_api {
   use super::platform_impl;
 
   pub type Vector2 = mint::Vector2<f32>;
+  pub type Vector4 = mint::Vector4<f32>;
 
   /// Cubism version identifier.
   #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
@@ -155,10 +156,17 @@ mod public_api {
 mod platform_impl {
   use std::sync::Arc;
 
+  use static_assertions::{assert_eq_align, assert_eq_size};
+
   use crate::memory::AlignedStorage;
 
   use super::public_api;
   use super::sys::*;
+
+  assert_eq_align!(public_api::Vector2, csmVector2);
+  assert_eq_size!(public_api::Vector2, csmVector2);
+  assert_eq_align!(public_api::Vector4, csmVector4);
+  assert_eq_size!(public_api::Vector4, csmVector4);
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore;
@@ -356,10 +364,16 @@ mod platform_impl {
 
       let dynamic = public_api::ModelDynamic {
         inner: PlatformModelDynamic {
-          parameter_count: parameters.len(),
-          part_count: parts.len(),
-          drawable_count: drawables.len(),
           csm_model,
+          parameter_values: unsafe { std::slice::from_raw_parts_mut(csmGetParameterValues(csm_model), parameters.len()) },
+          part_opactities: unsafe { std::slice::from_raw_parts_mut(csmGetPartOpacities(csm_model), parts.len()) },
+          drawable_dynamic_flags: unsafe { std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(csm_model) as *mut _, drawables.len()) },
+          drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawables.len()) },
+          drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawables.len()) },
+          drawable_multiply_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableMultiplyColors(csm_model) as *const _, drawables.len()) },
+          drawable_screen_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableScreenColors(csm_model) as *const _, drawables.len()) },
+
+          vertex_position_containers: VertexPositionContainers::new(csm_model),
         }
       };
 
@@ -387,64 +401,68 @@ mod platform_impl {
     moc_storage: Arc<AlignedStorage>,
   }
 
+  // TODO: Lifetime?
   #[derive(Debug)]
   pub struct PlatformModelDynamic {
-    parameter_count: usize,
-    part_count: usize,
-    drawable_count: usize,
     csm_model: *mut csmModel,
+    parameter_values: &'static mut [f32],
+    part_opactities: &'static mut [f32],
+    drawable_dynamic_flags: &'static mut [public_api::DynamicDrawableFlagSet],
+    drawable_render_orders: &'static [i32],
+    drawable_opacities: &'static [f32],
+    vertex_position_containers: VertexPositionContainers<'static>,
+    drawable_multiply_colors: &'static [public_api::Vector4],
+    drawable_screen_colors: &'static [public_api::Vector4],
   }
 
   impl public_api::ModelDynamic {
-    pub fn parameter_values(&self) -> &[f32] {
-      unsafe {
-        std::slice::from_raw_parts(csmGetParameterValues(self.inner.csm_model), self.inner.parameter_count)
-      }
+    pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values }
+    pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.parameter_values }
+    pub fn part_opacities(&self) -> &[f32] { self.inner.part_opactities }
+    pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opactities }
+    pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flags }
+    pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flags }
+    pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders }
+    pub fn drawable_opacities(&self) -> &[f32] { self.inner.drawable_opacities }
+    pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] {
+      &self.inner.vertex_position_containers.inner
     }
-    pub fn parameter_values_mut(&mut self) -> &mut [f32] {
-      unsafe {
-        std::slice::from_raw_parts_mut(csmGetParameterValues(self.inner.csm_model), self.inner.parameter_count)
-      }
-    }
-    pub fn part_opacities(&self) -> &[f32] {
-      unsafe {
-        std::slice::from_raw_parts(csmGetPartOpacities(self.inner.csm_model), self.inner.part_count)
-      }
-    }
-    pub fn part_opacities_mut(&mut self) -> &mut [f32] {
-      unsafe {
-        std::slice::from_raw_parts_mut(csmGetPartOpacities(self.inner.csm_model), self.inner.part_count)
-      }
-    }
-    pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
-      unsafe {
-        std::slice::from_raw_parts(csmGetDrawableDynamicFlags(self.inner.csm_model) as *const public_api::DynamicDrawableFlagSet, self.inner.drawable_count)
-      }
-    }
-    pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] {
-      unsafe {
-        std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(self.inner.csm_model) as *mut public_api::DynamicDrawableFlagSet, self.inner.drawable_count)
-      }
-    }
-    pub fn drawable_render_orders(&self) -> &[i32] {
-      unsafe {
-        std::slice::from_raw_parts(csmGetDrawableRenderOrders(self.inner.csm_model), self.inner.drawable_count)
-      }
-    }
-    pub fn drawable_opacities(&self) -> &[f32] {
-      unsafe {
-        std::slice::from_raw_parts(csmGetDrawableOpacities(self.inner.csm_model), self.inner.drawable_count)
-      }
-    }
+    pub fn drawable_multiply_colors(&self) -> &[public_api::Vector4] { &self.inner.drawable_multiply_colors }
+    pub fn drawable_screen_colors(&self) -> &[public_api::Vector4] { self.inner.drawable_screen_colors }
 
     pub fn update(&mut self) {
       unsafe {
         csmUpdateModel(self.inner.csm_model);
       }
+
+      self.inner.vertex_position_containers = VertexPositionContainers::new(self.inner.csm_model);
     }
     pub fn reset_drawable_dynamic_flags(&mut self) {
       unsafe {
         csmResetDrawableDynamicFlags(self.inner.csm_model);
+      }
+    }
+  }
+
+  #[derive(Debug)]
+  struct VertexPositionContainers<'a> {
+    inner: Box<[&'a [public_api::Vector2]]>,
+  }
+  impl<'a> VertexPositionContainers<'a> {
+    fn new(csm_model: *mut csmModel) -> Self {
+      Self {
+        inner: unsafe {
+          let drawable_count: usize = csmGetDrawableCount(csm_model) as _;
+
+          let vertex_counts = std::slice::from_raw_parts(csmGetDrawableVertexCounts(csm_model), drawable_count);
+          let vertex_position_ptrs = std::slice::from_raw_parts(csmGetDrawableVertexPositions(csm_model), drawable_count);
+
+          itertools::izip!(vertex_counts, vertex_position_ptrs)
+            .map(|(&vertex_count, &vertex_position_ptr)| {
+              std::slice::from_raw_parts(vertex_position_ptr as *const public_api::Vector2, vertex_count as _)
+            })
+            .collect()
+        }
       }
     }
   }
@@ -522,29 +540,34 @@ mod platform_impl {
 
   impl public_api::ModelDynamic {
     pub fn parameter_values(&self) -> &[f32] {
-      self.inner.js_model.parameter_values_scratch()
+      self.inner.js_model.scratch().parameter_values()
     }
     pub fn parameter_values_mut(&mut self) -> &mut [f32] {
-      self.inner.js_model.parameter_values_scratch_mut()
+      self.inner.js_model.scratch_mut().parameter_values_mut()
     }
     pub fn part_opacities(&self) -> &[f32] {
-      self.inner.js_model.part_opacities_scratch()
+      self.inner.js_model.scratch().part_opacities()
     }
     pub fn part_opacities_mut(&mut self) -> &mut [f32] {
-      self.inner.js_model.part_opacities_scratch_mut()
+      self.inner.js_model.scratch_mut().part_opacities_mut()
     }
     pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
-      self.inner.js_model.dynamic_flags_scratch()
+      self.inner.js_model.scratch().dynamic_flagsets()
     }
     pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] {
-      self.inner.js_model.dynamic_flags_scratch_mut()
+      self.inner.js_model.scratch_mut().dynamic_flagsets_mut()
     }
     pub fn drawable_render_orders(&self) -> &[i32] {
-      self.inner.js_model.render_orders_scratch()
+      self.inner.js_model.scratch().render_orders()
     }
     pub fn drawable_opacities(&self) -> &[f32] {
-      self.inner.js_model.opacities_scratch()
+      self.inner.js_model.scratch().opacities()
     }
+    pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] {
+      &self.inner.js_model.scratch().vertex_position_containers()
+    }
+    pub fn drawable_multiply_colors(&self) -> &[public_api::Vector4] { &self.inner.js_model.scratch().multiply_colors() }
+    pub fn drawable_screen_colors(&self) -> &[public_api::Vector4] { self.inner.js_model.scratch().screen_colors()}
 
     pub fn update(&mut self) {
       self.inner.js_model.update();
@@ -610,7 +633,7 @@ pub mod sys {
     moc_instance: wasm_bindgen::JsValue,
   }
 
-  // TODO: release.
+  // TODO: Use `release`.
   #[derive(Debug)]
   pub struct JsModel {
     pub canvas_info: public_api::CanvasInfo,
@@ -618,17 +641,106 @@ pub mod sys {
     pub parts: JsParts,
     pub drawables: JsDrawables,
 
-    parameter_values_scratch: Vec<f32>,
-    part_opacities_scratch: Vec<f32>,
-    dynamic_flags_scratch: Vec<public_api::DynamicDrawableFlagSet>,
-    render_orders_scratch: Vec<i32>,
-    opacities_scratch: Vec<f32>,
+    scratch: Scratch,
 
     /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
     model_instance: wasm_bindgen::JsValue,
     /// `Live2DCubismCore.Model.update` method.
     update_method: js_sys::Function,
   }
+
+  #[derive(Debug)]
+  pub struct Scratch {
+    parameter_values: Box<[f32]>,
+    part_opacities: Box<[f32]>,
+    drawable_dynamic_flagsets: Box<[public_api::DynamicDrawableFlagSet]>,
+    drawable_render_orders: Box<[i32]>,
+    drawable_opacities: Box<[f32]>,
+    drawable_vertex_position_containers: Box<[Box<[public_api::Vector2]>]>,
+    drawable_vertex_position_container_refs: Box<[&'static [public_api::Vector2]]>,
+    drawable_multiply_colors: Box<[public_api::Vector4]>,
+    drawable_screen_colors: Box<[public_api::Vector4]>,
+  }
+  impl Scratch {
+    pub fn parameter_values(&self) -> &[f32] { &self.parameter_values }
+    pub fn parameter_values_mut(&mut self) -> &mut [f32] { &mut self.parameter_values }
+    pub fn part_opacities(&self) -> &[f32] { &self.part_opacities }
+    pub fn part_opacities_mut(&mut self) -> &mut [f32] { &mut self.part_opacities }
+    pub fn dynamic_flagsets(&self) -> &[public_api::DynamicDrawableFlagSet] { &self.drawable_dynamic_flagsets }
+    pub fn dynamic_flagsets_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { &mut self.drawable_dynamic_flagsets }
+    pub fn render_orders(&self) -> & [i32] { &self.drawable_render_orders }
+    pub fn opacities(&self) -> &[f32] { &self.drawable_opacities }
+    pub fn vertex_position_containers(&self) -> &[&[public_api::Vector2]] { &self.drawable_vertex_position_container_refs }
+    pub fn multiply_colors(&self) -> &[public_api::Vector4] { &self.drawable_multiply_colors }
+    pub fn screen_colors(&self) -> &[public_api::Vector4] { &self.drawable_screen_colors }
+
+    fn new(parameters: &JsParameters, parts: &JsParts, drawables: &JsDrawables) -> Self {
+      let parameter_values = float32_array_to_new_vec(&parameters.values).into_boxed_slice();
+      let part_opacities = float32_array_to_new_vec(&parts.opacities).into_boxed_slice();
+      let drawable_dynamic_flagsets = uint8_array_to_new_vec::<public_api::DynamicDrawableFlagSet>(&drawables.dynamic_flags).into_boxed_slice();
+      let drawable_render_orders = int32_array_to_new_vec(&drawables.render_orders).into_boxed_slice();
+      let drawable_opacities = float32_array_to_new_vec(&drawables.opacities).into_boxed_slice();
+
+      let drawable_vertex_position_containers: Box<[_]> = drawables.vertex_positions.iter()
+        .map(|f32_array| {
+          let f32_array = f32_array.dyn_into::<js_sys::Float32Array>().unwrap();
+          float32_array_to_new_vec::<public_api::Vector2>(&f32_array).into_boxed_slice()
+        })
+        .collect();
+      let drawable_vertex_position_container_refs: Box<[_]> = drawable_vertex_position_containers.iter()
+        .map(|v| {
+          // SAFETY: A boxed slice is pointer-stable.
+          unsafe { std::slice::from_raw_parts(v.as_ptr(), v.len()) }}
+        )
+        .collect();
+
+      let drawable_multiply_colors = float32_array_to_new_vec::<public_api::Vector4>(&drawables.multiply_colors).into_boxed_slice();
+      let drawable_screen_colors = float32_array_to_new_vec::<public_api::Vector4>(&drawables.screen_colors).into_boxed_slice();
+
+      Self {
+        parameter_values,
+        part_opacities,
+        drawable_dynamic_flagsets,
+        drawable_render_orders,
+        drawable_opacities,
+        drawable_vertex_position_containers,
+        drawable_vertex_position_container_refs,
+        drawable_multiply_colors,
+        drawable_screen_colors,
+      }
+    }
+
+    fn store_into(&mut self, parameters: &JsParameters, parts: &JsParts, drawables: &JsDrawables) {
+      parameters.values.copy_from(&self.parameter_values);
+      parts.opacities.copy_from(&self.part_opacities);
+      {
+        // SAFETY: Size and alignment asserted to match.
+        let src = unsafe {
+          std::slice::from_raw_parts(self.drawable_dynamic_flagsets.as_ptr() as *const u8, self.drawable_dynamic_flagsets.len())
+        };
+        drawables.dynamic_flags.copy_from(src);
+      }
+    }
+    fn load_dynamic_flags_from(&mut self, drawables: &JsDrawables) {
+      uint8_array_overwrite_slice(&mut self.drawable_dynamic_flagsets, &drawables.dynamic_flags);
+    }
+    fn load_from(&mut self, drawables: &JsDrawables) {
+      self.load_dynamic_flags_from(drawables);
+
+      int32_array_overwrite_slice(&mut self.drawable_render_orders, &drawables.render_orders);
+      f32_array_overwrite_slice(&mut self.drawable_opacities, &drawables.opacities);
+
+      for (vertex_position_container, f32_array) in itertools::izip!(self.drawable_vertex_position_containers.iter_mut(), drawables.vertex_positions.iter()) {
+        let f32_array = f32_array.dyn_into::<js_sys::Float32Array>().unwrap();
+        f32_array_overwrite_slice(vertex_position_container, &f32_array);
+      }
+
+      f32_array_overwrite_slice(&mut self.drawable_multiply_colors, &drawables.multiply_colors);
+      f32_array_overwrite_slice(&mut self.drawable_screen_colors, &drawables.screen_colors);
+    }
+  }
+
+  // TODO: Use boxed slice.
 
   #[derive(Debug)]
   pub struct JsParameters {
@@ -677,6 +789,12 @@ pub mod sys {
     render_orders: js_sys::Int32Array,
     /// `Live2DCubismCore.Drawables.opacities` member.
     opacities: js_sys::Float32Array,
+    /// `Live2DCubismCore.Drawables.vertexPositions` member.
+    vertex_positions: js_sys::Array,
+    /// `Live2DCubismCore.Drawables.multiplyColors` member.
+    multiply_colors: js_sys::Float32Array,
+    /// `Live2DCubismCore.Drawables.screenColors` member.
+    screen_colors: js_sys::Float32Array,
     /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
     reset_dynamic_flags_method: js_sys::Function,
   }
@@ -790,11 +908,7 @@ pub mod sys {
         get_member_value(&model_instance, "drawables")
       );
 
-      let parameter_values_scratch = float32_array_to_new_vec(&parameters.values);
-      let part_opacities_scratch = float32_array_to_new_vec(&parts.opacities);
-      let dynamic_flags_scratch = uint8_array_to_new_vec::<public_api::DynamicDrawableFlagSet>(&drawables.dynamic_flags);
-      let render_orders_scratch = int32_array_to_new_vec(&drawables.render_orders);
-      let opacities_scratch = float32_array_to_new_vec(&drawables.opacities);
+      let scratch = Scratch::new(&parameters, &parts, &drawables);
 
       JsModel {
         canvas_info,
@@ -802,11 +916,7 @@ pub mod sys {
         parts,
         drawables,
 
-        parameter_values_scratch,
-        part_opacities_scratch,
-        dynamic_flags_scratch,
-        render_orders_scratch,
-        opacities_scratch,
+        scratch,
 
         model_instance,
         update_method,
@@ -815,43 +925,17 @@ pub mod sys {
   }
 
   impl JsModel {
-    pub fn parameter_values_scratch(&self) -> &[f32] { &self.parameter_values_scratch }
-    pub fn parameter_values_scratch_mut(&mut self) -> &mut [f32] { &mut self.parameter_values_scratch }
-    pub fn part_opacities_scratch(&self) -> &[f32] { &self.part_opacities_scratch }
-    pub fn part_opacities_scratch_mut(&mut self) -> &mut [f32] { &mut self.part_opacities_scratch }
-    pub fn dynamic_flags_scratch(&self) -> &[public_api::DynamicDrawableFlagSet] { &self.dynamic_flags_scratch }
-    pub fn dynamic_flags_scratch_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { &mut self.dynamic_flags_scratch }
-    pub fn render_orders_scratch(&self) -> & [i32] { &self.render_orders_scratch }
-    pub fn opacities_scratch(&self) -> &[f32] { &self.opacities_scratch }
+    pub fn scratch(&self) -> &Scratch { &self.scratch }
+    pub fn scratch_mut(&mut self) -> &mut Scratch { &mut self.scratch }
 
     pub fn update(&mut self) {
-      self.store_parameter_values_from_scratch();
-      self.store_part_opacities_from_scratch();
-      self.store_dynamic_flags_from_scratch();
+      self.scratch.store_into(&self.parameters, &self.parts, &self.drawables);
       self.update_method.call0(&self.model_instance).unwrap();
-      self.load_into_scratch();
+      self.scratch.load_from(&self.drawables);
     }
     pub fn reset_drawable_dynamic_flags(&mut self) {
       self.drawables.reset_dynamic_flags_method.call0(&self.drawables.drawables_instance).unwrap();
-      self.load_into_scratch();
-    }
-
-    fn store_parameter_values_from_scratch(&mut self) {
-      self.parameters.values.copy_from(&self.parameter_values_scratch);
-    }
-    fn store_part_opacities_from_scratch(&mut self) {
-      self.parts.opacities.copy_from(&self.part_opacities_scratch);
-    }
-    fn store_dynamic_flags_from_scratch(&mut self) {
-      let src = unsafe {
-        std::slice::from_raw_parts(self.dynamic_flags_scratch.as_ptr() as *const u8, self.dynamic_flags_scratch.len())
-      };
-      self.drawables.dynamic_flags.copy_from(src);
-    }
-    fn load_into_scratch(&mut self) {
-      uint8_array_overwrite_vec(&mut self.dynamic_flags_scratch, &self.drawables.dynamic_flags);
-      int32_array_overwrite_vec(&mut self.render_orders_scratch, &self.drawables.render_orders);
-      f32_array_overwrite_vec(&mut self.opacities_scratch, &self.drawables.opacities);
+      self.scratch.load_from(&self.drawables);
     }
   }
 
@@ -999,6 +1083,9 @@ pub mod sys {
       let dynamic_flags = get_member_value(&drawables_instance, "dynamicFlags").dyn_into::<js_sys::Uint8Array>().unwrap();
       let render_orders = get_member_value(&drawables_instance, "renderOrders").dyn_into::<js_sys::Int32Array>().unwrap();
       let opacities = get_member_value(&drawables_instance, "opacities").dyn_into::<js_sys::Float32Array>().unwrap();
+      let vertex_positions = get_member_array(&drawables_instance, "vertexPositions");
+      let multiply_colors = get_member_value(&drawables_instance, "multiplyColors").dyn_into::<js_sys::Float32Array>().unwrap();
+      let screen_colors = get_member_value(&drawables_instance, "screenColors").dyn_into::<js_sys::Float32Array>().unwrap();
 
       Self {
         ids,
@@ -1013,6 +1100,9 @@ pub mod sys {
         dynamic_flags,
         render_orders,
         opacities,
+        vertex_positions,
+        multiply_colors,
+        screen_colors,
         reset_dynamic_flags_method,
       }
     }
@@ -1045,16 +1135,16 @@ pub mod sys {
     js_sys::Array::from(&get_member_value(value, name))
   }
 
-  fn uint8_array_overwrite_vec<O>(dst: &mut Vec<O>, typed_array: &js_sys::Uint8Array) {
-    typed_array_overwrite_vec(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
+  fn uint8_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Uint8Array) {
+    typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
   }
-  fn int32_array_overwrite_vec<O>(dst: &mut Vec<O>, typed_array: &js_sys::Int32Array) {
-    typed_array_overwrite_vec(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
+  fn int32_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Int32Array) {
+    typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
   }
-  fn f32_array_overwrite_vec<O>(dst: &mut Vec<O>, typed_array: &js_sys::Float32Array) {
-    typed_array_overwrite_vec(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
+  fn f32_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Float32Array) {
+    typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
   }
-  fn typed_array_overwrite_vec<O, E, W: FnOnce(*mut E)>(dst: &mut Vec<O>, length: u32, writer: W) {
+  fn typed_array_overwrite_slice<O, E, W: FnOnce(*mut E)>(dst: &mut [O], length: u32, writer: W) {
     let src_element_size = std::mem::size_of::<E>();
     let dst_element_size = std::mem::size_of::<O>();
     let dst_len = length as usize / (dst_element_size / src_element_size);
@@ -1155,16 +1245,19 @@ pub mod public_api_tests {
     log::info!("{:?}", model.parts);
     log::info!("{:?}", model.drawables);
 
-    log::info!("{:?}", model.dynamic.parameter_values()[0]);
-    log::info!("{:?}", model.dynamic.part_opacities()[0]);
-    log::info!("{:?}", model.dynamic.drawable_dynamic_flags()[0]);
-    log::info!("{:?}", model.dynamic.drawable_render_orders()[0]);
-    log::info!("{:?}", model.dynamic.drawable_opacities()[0]);
+    log::info!("Parameter values: {:?}", model.dynamic.parameter_values());
+    log::info!("Part opacities: {:?}", model.dynamic.part_opacities());
+    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flags()[0]);
+    log::info!("Drawable render orders: {:?}", model.dynamic.drawable_render_orders()[0]);
+    log::info!("Drawable opacities: {:?}", model.dynamic.drawable_opacities()[0]);
+    log::info!("Drawable vertex position_containers: {:?}", model.dynamic.drawable_vertex_position_containers()[0]);
+    log::info!("Drawable multiply colors: {:?}", model.dynamic.drawable_multiply_colors());
+    log::info!("Drawable screen colors: {:?}", model.dynamic.drawable_screen_colors());
 
     model.dynamic.reset_drawable_dynamic_flags();
     model.dynamic.update();
 
-    log::info!("{:?}", model.dynamic.drawable_dynamic_flags()[0]);
+    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flags()[0]);
   }
 
   #[cfg(not(target_arch = "wasm32"))]
