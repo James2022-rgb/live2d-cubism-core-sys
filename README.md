@@ -1,10 +1,11 @@
-# 🦀 Rust FFI bindings for Live2D® Cubism SDK Core
+# Rust FFI bindings for Live2D® Cubism SDK Core 🦀
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Low-level Rust bindings to the Live2D Cubism SDK Core library.
-
-:construction: Very much a WIP project - the public API is going through a *huge* redesign in order to add support for `wasm32-unknown-unknown`.
+Rust bindings to the Live2D Cubism SDK Core library.
+Provides:
+- low-level, unsafe Rust bindings to the C interface for Native
+- a higher-level interface for Native and Web (optional but enabled by default)
 
 License
 ----------------------------
@@ -20,6 +21,7 @@ This crate is licensed under the [MIT license](LICENSE-MIT).
 
 SDK version support
 ----------------------------
+Only these versions are supported:
 |        | Version |
 | ------ | ------- |
 | Native | 4-r.5.1 |
@@ -29,16 +31,16 @@ Build target support
 ----------------------------
 |                            | Windows            |
 | -------------------------- | ------------------ |
-| `x86_64-pc-windows-msvc`   | :construction: WIP |
-| `aarch64-linux-android`    | :construction: WIP |
-| `x86_64-unknown-linux-gnu` | :construction: WIP |
-| `wasm32-unknown-unknown`   | :construction: WIP |
+| `x86_64-pc-windows-msvc`   | :white_check_mark: |
+| `aarch64-linux-android`    | :white_check_mark: |
+| `x86_64-unknown-linux-gnu` |                    |
+| `wasm32-unknown-unknown`   | :white_check_mark: |
 
-`aarch64-unknown-linux-gnu` support is not possible, due to Live2D Inc. not providing a binary for this target in the SDK.
+`aarch64-unknown-linux-gnu` support is unfortunately not possible, due to Live2D Inc. not providing a binary for this target in the SDK.
 
 Building
 ----------------------------
-An enviroment variable *MUST* be set that that points to an existing Live2D Cubism SDK directory, for _Native_ and _Web_, respectively:
+An enviroment variable *MUST* be set that that points to an existing _Live2D Cubism SDK_ directory, _for Native_ and _Web_, respectively:
 |        | Enviroment variable name       |
 | ------ | ------------------------------ |
 | Native | `LIVE2D_CUBISM_SDK_NATIVE_DIR` |
@@ -53,6 +55,10 @@ LIVE2D_CUBISM_SDK_WEB_DIR=D:/Development/live2d/CubismSdkForWeb-4-r.5
 Live2D Cubism SDK Core is included in _Live2D Cubism SDK for Native_, or _Web_, downloaded from:
 https://www.live2d.com/en/download/cubism-sdk/
 
+Feature gate
+----------------------------
+The `core` feature, enabled by default, provides high-level interface on top of the unsafe bindings.
+
 Usage
 ----------------------------
 
@@ -62,9 +68,18 @@ Usage
 live2d-cubism-core-sys = { git = "https://github.com/James2022-rgb/live2d-cubism-core-sys" }
 ```
 
-Rust code:
+Rust code (C interface):
 ```rust
 unsafe {
   live2d_cubism_core_sys::csmReviveMocInPlace(...);
 }
+```
+
+Rust code (high-level interface):
+```rust
+use live2d_cubism_core_sys::core;
+
+let cubism_core = core::CubismCore::default();
+let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
+let mut model = moc.to_model();
 ```
