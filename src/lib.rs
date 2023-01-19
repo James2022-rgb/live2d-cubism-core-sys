@@ -1,5 +1,10 @@
 
-mod memory;
+if_native! {
+  mod memory;
+  mod sys;
+
+  pub use sys::*;
+}
 
 mod public_api {
   use static_assertions::{assert_eq_align, assert_eq_size};
@@ -1184,15 +1189,6 @@ mod platform_impl {
   }
 }
 
-/// Direct bindings to the C interface of Live2D Cubism SDK Core for Native.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod sys {
-  #![allow(non_upper_case_globals)]
-  #![allow(non_camel_case_types)]
-  #![allow(non_snake_case)]
-  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-}
-
 #[cfg(test)]
 pub mod public_api_tests {
   // Use:
@@ -1287,6 +1283,20 @@ pub mod public_api_tests {
   fn public_api_use() {
     impl_public_api_use();
   }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! if_native {
+  ($($code:tt)*) => {
+    $($code)*
+  }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[macro_export]
+macro_rules! if_native {
+  ($($code:tt)*) => {};
 }
 
 #[cfg(target_arch = "wasm32")]
