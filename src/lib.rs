@@ -585,7 +585,7 @@ pub mod sys {
 /// Not-so-direct bindings to the JavaScript interface of Live2D Cubism SDK Core for Web.
 #[cfg(target_arch = "wasm32")]
 pub mod sys {
-  const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Core/live2dcubismcore.js"));
+  const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Core/live2dcubismcore.min.js"));
 
   use wasm_bindgen::JsCast as _;
 
