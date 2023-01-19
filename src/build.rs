@@ -25,7 +25,7 @@ fn handle_target_native() {
 
   let core_platform_lib_dir_path = {
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-    
+
     let arch_dir_name =
       match target_os.as_str() {
         "windows" => target_arch.as_str(),
@@ -72,7 +72,6 @@ fn handle_target_native() {
 }
 
 fn handle_target_web() {
-  // let cubism_core_js_filepath = concat!(env!("LIVE2D_CUBISM_SDK_NATIVE_DIR"), "/live2dcubismcore.js");
 }
 
 fn get_cubism_sdk_dir() -> PathBuf {

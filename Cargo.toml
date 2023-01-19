@@ -9,6 +9,10 @@ edition = "2021"
 
 build = "src/build.rs"
 
+[features]
+default = ["core"]
+core = []
+
 [dependencies]
 log = "0.4"
 static_assertions = "1.1.0"
