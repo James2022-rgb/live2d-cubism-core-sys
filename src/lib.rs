@@ -623,7 +623,6 @@ pub mod sys {
     moc_instance: wasm_bindgen::JsValue,
   }
 
-  // TODO: Use `release`.
   #[derive(Debug)]
   pub struct JsModel {
     pub canvas_info: public_api::CanvasInfo,
@@ -637,6 +636,8 @@ pub mod sys {
     model_instance: wasm_bindgen::JsValue,
     /// `Live2DCubismCore.Model.update` method.
     update_method: js_sys::Function,
+    /// `Live2DCubismCore.Model.release` method.
+    release_method: js_sys::Function,
   }
 
   #[derive(Debug)]
@@ -775,6 +776,7 @@ pub mod sys {
 
       let prototype = get_member_value(&self.model_class, "prototype");
       let update_method = get_member_function(&prototype, "update");
+      let release_method = get_member_function(&prototype, "release");
 
       let canvas_info = {
         let canvas_info_instance = get_member_value(&model_instance, "canvasinfo");
@@ -810,6 +812,7 @@ pub mod sys {
 
         model_instance,
         update_method,
+        release_method,
       }
     }
   }
@@ -823,6 +826,11 @@ pub mod sys {
     pub fn reset_drawable_dynamic_flags(&mut self) {
       self.drawables.reset_dynamic_flags_method.call0(&self.drawables.drawables_instance).unwrap();
       self.scratch.load_from(&self.drawables);
+    }
+  }
+  impl Drop for JsModel {
+    fn drop(&mut self) {
+      self.release_method.call0(&self.model_instance).unwrap();
     }
   }
 
