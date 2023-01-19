@@ -12,6 +12,7 @@ build = "src/build.rs"
 [dependencies]
 log = "0.4"
 static_assertions = "1.1.0"
+thiserror = "1.0"
 shrinkwraprs = "0.3.0"
 derive_more = "0.99.17"
 num_enum = "0.5.7"

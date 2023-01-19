@@ -3,6 +3,7 @@ mod memory;
 
 mod public_api {
   use static_assertions::{assert_eq_align, assert_eq_size};
+  use thiserror::Error;
   use shrinkwraprs::Shrinkwrap;
   use derive_more::Display;
   use num_enum::TryFromPrimitive;
@@ -12,6 +13,16 @@ mod public_api {
 
   pub type Vector2 = mint::Vector2<f32>;
   pub type Vector4 = mint::Vector4<f32>;
+
+  #[derive(Debug, Clone, Error)]
+  pub enum MocError {
+    #[error("Not a valid moc file.")]
+    InvalidMoc,
+    /// ## Platform-specific
+    /// - **Web:** Unsupported.
+    #[error("Unsupported moc version. given: \"{given}\" latest supported:\"{latest_supported}\"")]
+    UnsupportedMocVersion { given: MocVersion, latest_supported: MocVersion },
+  }
 
   /// Cubism version identifier.
   #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
@@ -65,6 +76,7 @@ mod public_api {
     pub(super) inner: platform_impl::PlatformCubismCore,
   }
 
+  #[derive(Debug)]
   /// Cubism moc.
   pub struct Moc {
     pub version: MocVersion,
@@ -178,8 +190,7 @@ mod platform_impl {
       unsafe { csmGetLatestMocVersion() }.try_into().unwrap()
     }
 
-    // TODO: Return a `Result`.
-    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<public_api::Moc> {
+    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Result<public_api::Moc, public_api::MocError> {
       const MOC_ALIGNMENT: usize = csmAlignofMoc as usize;
 
       let mut aligned_storage = AlignedStorage::new(bytes.len(), MOC_ALIGNMENT).unwrap();
@@ -190,28 +201,27 @@ mod platform_impl {
       let moc_version = unsafe {
         csmGetMocVersion(aligned_storage.as_mut_ptr() as *mut _, size_in_u32)
       };
-      // TODO: Error
-      let moc_version = public_api::MocVersion::try_from(moc_version).ok()?;
+      let moc_version = public_api::MocVersion::try_from(moc_version).map_err(|_| public_api::MocError::InvalidMoc)?;
 
       if self.latest_supported_moc_version() < moc_version {
-        // TODO: Error
-        return None;
+        return Err(public_api::MocError::UnsupportedMocVersion { given: moc_version, latest_supported: self.latest_supported_moc_version() });
       }
 
       let csm_moc = unsafe {
         csmReviveMocInPlace(aligned_storage.as_mut_ptr() as *mut _, size_in_u32)
       };
 
-      public_api::Moc {
+      Ok(public_api::Moc {
         version: moc_version,
         inner: PlatformMoc {
           csm_moc,
           moc_storage: Arc::new(aligned_storage),
         },
-      }.into()
+      })
     }
   }
 
+  #[derive(Debug)]
   pub struct PlatformMoc {
     csm_moc: *mut csmMoc,
     /// This is an [`Arc`] because the memory block for a `csmMoc` needs to outlive
@@ -411,7 +421,6 @@ mod platform_impl {
     moc_storage: Arc<AlignedStorage>,
   }
 
-  // TODO: Lifetime?
   #[derive(Debug)]
   pub struct PlatformModelDynamic {
     csm_model: *mut csmModel,
@@ -495,20 +504,22 @@ mod platform_impl {
     pub fn version(&self) -> public_api::CubismVersion { self.inner.js_cubism_core.cubism_version }
     pub fn latest_supported_moc_version(&self) -> public_api::MocVersion { self.inner.js_cubism_core.latest_supported_moc_version }
 
-    // TODO: Error
-    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<public_api::Moc> {
+    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Result<public_api::Moc, public_api::MocError> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
       array.copy_from(bytes);
 
       let js_moc = self.inner.js_cubism_core.moc_from_js_array_buffer(array.buffer());
-
-      public_api::Moc {
-        version: js_moc.version,
-        inner: PlatformMoc {
-          js_moc,
-          js_cubism_core: Arc::clone(&self.inner.js_cubism_core),
-        },
-      }.into()
+      js_moc
+        .map(|js_moc| {
+          public_api::Moc {
+            version: js_moc.version,
+            inner: PlatformMoc {
+              js_moc,
+              js_cubism_core: Arc::clone(&self.inner.js_cubism_core),
+            },
+          }
+        })
+        .ok_or(public_api::MocError::InvalidMoc)
     }
   }
 
@@ -604,7 +615,7 @@ pub mod sys {
 
     /// The `Live2DCubismCore.Moc` class object.
     moc_class: wasm_bindgen::JsValue,
-    /// The`Live2DCubismCore.Moc.fromArrayBuffer` static method.
+    /// The `Live2DCubismCore.Moc.fromArrayBuffer` static method.
     from_array_buffer_method: js_sys::Function,
 
     /// The `Live2DCubismCore.Model` class object.
@@ -742,20 +753,22 @@ pub mod sys {
   }
 
   impl JsLive2DCubismCore {
-    // TODO: Error.
-    pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
+    pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> Option<JsMoc> {
       // `Version.csmGetMocVersion` requires a `Moc`, unlike the `csmGetMocVersion` in the Native SDK.
       let moc_instance = self.from_array_buffer_method.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
-      assert!(!moc_instance.is_undefined());
+      if moc_instance.is_null() {
+        log::error!("Live2DCubismCore.Moc.fromArrayBuffer failed!");
+        return None;
+      }
 
       let version = self.get_moc_version(&moc_instance, &array_buffer);
 
-      JsMoc {
+      Some(JsMoc {
         version,
         moc_instance,
-      }
+      })
     }
-    pub fn moc_from_bytes(&self, bytes: &[u8]) -> JsMoc {
+    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<JsMoc> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
       array.copy_from(bytes);
 
@@ -1222,14 +1235,19 @@ pub mod public_api_tests {
       console_log::init_with_level(log::Level::Trace).unwrap();
     }
 
-    // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.moc3"));
-    let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
-
     let cubism_core = public_api::CubismCore::default();
     log::info!("Live2D Cubism Core Version: {}", cubism_core.version());
     log::info!("Latest supported moc version: {}", cubism_core.latest_supported_moc_version());
 
-    let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
+    {
+      let invalid_moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.model3.json"));
+      cubism_core.moc_from_bytes(invalid_moc_bytes).expect_err("moc_from_bytes should fail");
+    }
+
+    // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.moc3"));
+    let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
+
+    let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
     log::info!("Moc version: {}", moc.version);
 
     let mut model = moc.to_model();
