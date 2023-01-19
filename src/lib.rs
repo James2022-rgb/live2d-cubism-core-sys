@@ -74,9 +74,9 @@ mod public_api {
   /// Cubism model.
   pub struct Model {
     pub canvas_info: CanvasInfo,
-    pub parameters: Vec<Parameter>,
-    pub parts: Vec<Part>,
-    pub drawables: Vec<Drawable>,
+    pub parameters: Box<[Parameter]>,
+    pub parts: Box<[Part]>,
+    pub drawables: Box<[Drawable]>,
     pub dynamic: ModelDynamic,
     pub(super) inner: platform_impl::PlatformModel,
   }
@@ -98,7 +98,7 @@ mod public_api {
     pub ty: ParameterType,
     pub value_range: std::ops::Range<f32>,
     pub default_value: f32,
-    pub keys: Vec<f32>,
+    pub keys: Box<[f32]>,
   }
 
   #[derive(Debug)]
@@ -112,9 +112,9 @@ mod public_api {
     pub id: String,
     pub constant_flagset: ConstantDrawableFlagSet,
     pub texture_index: usize,
-    pub masks: Vec<usize>,
-    pub vertex_uvs: Vec<Vector2>,
-    pub triangle_indices: Vec<u16>,
+    pub masks: Box<[usize]>,
+    pub vertex_uvs: Box<[Vector2]>,
+    pub triangle_indices: Box<[u16]>,
     pub parent_part_index: Option<usize>,
   }
 
@@ -246,7 +246,7 @@ mod platform_impl {
         }
       };
 
-      let parameters: Vec<_> = unsafe {
+      let parameters: Box<[_]> = unsafe {
         let count = csmGetParameterCount(csm_model);
 
         let ids: Vec<_> = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count as _).iter()
@@ -261,31 +261,31 @@ mod platform_impl {
         let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _);
         let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _);
 
-        let key_value_containers: Vec<_> = {
+        let key_value_containers: Box<[_]> = {
           let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _);
           let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _);
 
           itertools::izip!(key_counts, key_value_ptrs)
             .map(|(&key_count, &key_value_ptr)| {
-              std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec()
+              std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec().into_boxed_slice()
             })
             .collect()
         };
 
-        itertools::izip!(ids, types, minimum_values, maximum_values, default_values, key_value_containers)
+        itertools::izip!(ids, types, minimum_values, maximum_values, default_values, key_value_containers.iter())
           .map(|(id, ty, &minimum_value, &maximum_value, &default_value, key_value_container)| {
             public_api::Parameter {
               id,
               ty,
               value_range: minimum_value..maximum_value,
               default_value,
-              keys: key_value_container,
+              keys: key_value_container.clone(),
             }
           })
           .collect()
       };
 
-      let parts: Vec<_> = unsafe {
+      let parts: Box<[_]> = unsafe {
         let count = csmGetPartCount(csm_model);
 
         let ids: Vec<_> = std::slice::from_raw_parts(csmGetPartIds(csm_model), count as _).iter()
@@ -305,7 +305,7 @@ mod platform_impl {
           .collect()
       };
 
-      let drawables: Vec<_> = unsafe {
+      let drawables: Box<[_]> = unsafe {
         let count = csmGetDrawableCount(csm_model);
 
         let ids: Vec<_> = std::slice::from_raw_parts(csmGetDrawableIds(csm_model), count as _).iter()
@@ -320,35 +320,35 @@ mod platform_impl {
           .map(|value| *value as usize)
           .collect();
 
-        let mask_containers: Vec<_> = {
+        let mask_containers: Box<[_]> = {
           let mask_counts = std::slice::from_raw_parts(csmGetDrawableMaskCounts(csm_model), count as _);
           let mask_container_ptrs = std::slice::from_raw_parts(csmGetDrawableMasks(csm_model), count as _);
 
           itertools::izip!(mask_counts, mask_container_ptrs)
             .map(|(&mask_count, &mask_container_ptr)| {
-              std::slice::from_raw_parts(mask_container_ptr, mask_count as _).iter().map(|mask| *mask as usize).collect::<Vec<_>>()
+              std::slice::from_raw_parts(mask_container_ptr, mask_count as _).iter().map(|mask| *mask as usize).collect::<Box<[_]>>()
             })
             .collect()
         };
 
-        let vertex_uv_containers: Vec<_> = {
+        let vertex_uv_containers: Box<[_]> = {
           let vertex_counts = std::slice::from_raw_parts(csmGetDrawableVertexCounts(csm_model), count as _);
           let vertex_uv_ptrs = std::slice::from_raw_parts(csmGetDrawableVertexUvs(csm_model), count as _);
 
           itertools::izip!(vertex_counts, vertex_uv_ptrs)
             .map(|(&vertex_count, &vertex_uv_ptr)| {
-              std::slice::from_raw_parts(vertex_uv_ptr as *const public_api::Vector2, vertex_count as _).to_vec()
+              std::slice::from_raw_parts(vertex_uv_ptr as *const public_api::Vector2, vertex_count as _).to_vec().into_boxed_slice()
             })
             .collect()
         };
 
-        let triangle_index_containers: Vec<_> = {
+        let triangle_index_containers: Box<[_]> = {
           let triangle_index_counts = std::slice::from_raw_parts(csmGetDrawableIndexCounts(csm_model), count as _);
           let triangle_index_ptrs = std::slice::from_raw_parts(csmGetDrawableIndices(csm_model), count as _);
 
           itertools::izip!(triangle_index_counts, triangle_index_ptrs)
             .map(|(&triangle_index_count, &triangle_index_ptr)| {
-              std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec()
+              std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec().into_boxed_slice()
             })
             .collect()
         };
@@ -356,15 +356,15 @@ mod platform_impl {
         let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetDrawableParentPartIndices(csm_model), count as _).iter()
           .map(|&value| (value > 0).then_some(value as usize)).collect();
 
-        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers, vertex_uv_containers, triangle_index_containers, parent_part_indices)
+        itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers.iter(), vertex_uv_containers.iter(), triangle_index_containers.iter(), parent_part_indices)
           .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index),| {
             public_api::Drawable {
               id,
               constant_flagset,
               texture_index,
-              masks: mask_container,
-              vertex_uvs: vertex_uv_container,
-              triangle_indices: triangle_index_container,
+              masks: mask_container.clone(),
+              vertex_uvs: vertex_uv_container.clone(),
+              triangle_indices: triangle_index_container.clone(),
               parent_part_index,
             }
           })
@@ -522,9 +522,9 @@ mod platform_impl {
       let js_model = self.inner.js_cubism_core.model_from_moc(&self.inner.js_moc);
 
       let canvas_info = js_model.canvas_info;
-      let parameters = js_model.parameters.to_aos();
-      let parts = js_model.parts.to_aos();
-      let drawables = js_model.drawables.to_aos();
+      let parameters = js_model.parameters.to_aos().into_boxed_slice();
+      let parts = js_model.parts.to_aos().into_boxed_slice();
+      let drawables = js_model.drawables.to_aos().into_boxed_slice();
 
       let dynamic = public_api::ModelDynamic {
         inner: PlatformModelDynamic {
@@ -740,16 +740,14 @@ pub mod sys {
     }
   }
 
-  // TODO: Use boxed slice.
-
   #[derive(Debug)]
   pub struct JsParameters {
-    pub ids: Vec<String>,
-    pub types: Vec<public_api::ParameterType>,
-    pub minimum_values: Vec<f32>,
-    pub maximum_values: Vec<f32>,
-    pub default_values: Vec<f32>,
-    pub key_value_containers: Vec<Vec<f32>>,
+    pub ids: Box<[String]>,
+    pub types: Box<[public_api::ParameterType]>,
+    pub minimum_values: Box<[f32]>,
+    pub maximum_values: Box<[f32]>,
+    pub default_values: Box<[f32]>,
+    pub key_value_containers: Box<[Box<[f32]>]>,
 
     /// The `parameters` member variable of a `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Parameters` class object.
@@ -760,8 +758,8 @@ pub mod sys {
 
   #[derive(Debug)]
   pub struct JsParts {
-    pub ids: Vec<String>,
-    pub parent_part_indices: Vec<Option<usize>>,
+    pub ids: Box<[String]>,
+    pub parent_part_indices: Box<[Option<usize>]>,
 
     /// The `parts` member variable of a `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Parts` class object.
@@ -772,13 +770,13 @@ pub mod sys {
 
   #[derive(Debug)]
   pub struct JsDrawables {
-    pub ids: Vec<String>,
-    pub constant_flagsets: Vec<public_api::ConstantDrawableFlagSet>,
-    pub texture_indices: Vec<usize>,
-    pub mask_containers: Vec<Vec<usize>>,
-    pub vertex_uv_containers: Vec<Vec<public_api::Vector2>>,
-    pub triangle_index_containers: Vec<Vec<u16>>,
-    pub parent_part_indices: Vec<Option<usize>>,
+    pub ids: Box<[String]>,
+    pub constant_flagsets: Box<[public_api::ConstantDrawableFlagSet]>,
+    pub texture_indices: Box<[usize]>,
+    pub mask_containers: Box<[Box<[usize]>]>,
+    pub vertex_uv_containers: Box<[Box<[public_api::Vector2]>]>,
+    pub triangle_index_containers: Box<[Box<[u16]>]>,
+    pub parent_part_indices: Box<[Option<usize>]>,
 
     /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
     /// An instance of `Live2DCubismCore.Drawables` class object.
@@ -943,27 +941,27 @@ pub mod sys {
 
   impl JsParameters {
     fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
-      let ids: Vec<_> = get_member_array(&parameters_instance, "ids").iter()
+      let ids: Box<[_]> = get_member_array(&parameters_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
         .collect();
 
-      let types: Vec<_> = get_member_array(&parameters_instance, "types").iter()
+      let types: Box<[_]> = get_member_array(&parameters_instance, "types").iter()
         .map(|value| public_api::ParameterType::try_from(value.as_f64().unwrap() as i32).unwrap())
         .collect();
 
-      let minimum_values: Vec<_> = get_member_array(&parameters_instance, "minimumValues").iter()
+      let minimum_values: Box<[_]> = get_member_array(&parameters_instance, "minimumValues").iter()
         .map(|value| value.as_f64().unwrap() as f32)
         .collect();
 
-      let maximum_values: Vec<_> = get_member_array(&parameters_instance, "maximumValues").iter()
+      let maximum_values: Box<[_]> = get_member_array(&parameters_instance, "maximumValues").iter()
         .map(|value| value.as_f64().unwrap() as f32)
         .collect();
 
-      let default_values: Vec<_> = get_member_array(&parameters_instance, "defaultValues").iter()
+      let default_values: Box<[_]> = get_member_array(&parameters_instance, "defaultValues").iter()
         .map(|value| value.as_f64().unwrap() as f32)
         .collect();
 
-      let key_value_containers: Vec<Vec<f32>> = get_member_array(&parameters_instance, "keyValues").iter()
+      let key_value_containers: Box<[Box<[f32]>]> = get_member_array(&parameters_instance, "keyValues").iter()
         .map(|value| {
           js_sys::Array::from(&value).iter()
             .map(|value| value.as_f64().unwrap() as f32)
@@ -987,7 +985,7 @@ pub mod sys {
     }
 
     pub fn to_aos(&self) -> Vec<public_api::Parameter> {
-      itertools::izip!(&self.ids, &self.types, &self.minimum_values, &self.maximum_values, &self.default_values, &self.key_value_containers)
+      itertools::izip!(self.ids.iter(), self.types.iter(), self.minimum_values.iter(), self.maximum_values.iter(), self.default_values.iter(), self.key_value_containers.iter())
         .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
           public_api::Parameter {
             id: id.clone(),
@@ -1003,11 +1001,11 @@ pub mod sys {
 
   impl JsParts {
     fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
-      let ids: Vec<_> = get_member_array(&parts_instance, "ids").iter()
+      let ids: Box<[_]> = get_member_array(&parts_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
         .collect();
 
-      let parent_part_indices: Vec<_> = get_member_array(&parts_instance, "parentIndices").iter()
+      let parent_part_indices: Box<[_]> = get_member_array(&parts_instance, "parentIndices").iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
           (number > 0.0).then_some(number as usize)
@@ -1026,7 +1024,7 @@ pub mod sys {
     }
 
     pub fn to_aos(&self) -> Vec<public_api::Part> {
-      itertools::izip!(&self.ids, &self.parent_part_indices)
+      itertools::izip!(self.ids.iter(), self.parent_part_indices.iter())
         .map(|(id, parent_part_index)| {
           public_api::Part {
             id: id.clone(),
@@ -1039,43 +1037,43 @@ pub mod sys {
 
   impl JsDrawables {
     fn from_drawables_instance(reset_dynamic_flags_method: js_sys::Function, drawables_instance: wasm_bindgen::JsValue) -> Self {
-      let ids: Vec<_> = get_member_array(&drawables_instance, "ids").iter()
+      let ids: Box<[_]> = get_member_array(&drawables_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
         .collect();
 
-      let constant_flagsets: Vec<_> = get_member_array(&drawables_instance, "constantFlags").iter()
+      let constant_flagsets: Box<[_]> = get_member_array(&drawables_instance, "constantFlags").iter()
         .map(|value| {
           public_api::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap()
         })
         .collect();
 
-      let texture_indices: Vec<_> = get_member_array(&drawables_instance, "textureIndices").iter()
+      let texture_indices: Box<[_]> = get_member_array(&drawables_instance, "textureIndices").iter()
         .map(|value| value.as_f64().unwrap() as usize)
         .collect();
 
-      let mask_containers: Vec<_> = get_member_array(&drawables_instance, "masks").iter()
+      let mask_containers: Box<[_]> = get_member_array(&drawables_instance, "masks").iter()
         .map(|mask_container| {
           js_sys::Array::from(&mask_container).iter()
             .map(|mask| mask.as_f64().unwrap() as usize)
-            .collect::<Vec<_>>()
+            .collect::<Box<[_]>>()
         })
         .collect();
 
-      let vertex_uv_containers: Vec<_> = get_member_array(&drawables_instance, "vertexUvs").iter()
+      let vertex_uv_containers: Box<[_]> = get_member_array(&drawables_instance, "vertexUvs").iter()
         .map(|v| {
           let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
-          float32_array_to_new_vec(&typed_array)
+          float32_array_to_new_vec(&typed_array).into_boxed_slice()
         })
         .collect();
 
-      let triangle_index_containers: Vec<_> = get_member_array(&drawables_instance, "indices").iter()
+      let triangle_index_containers: Box<[_]> = get_member_array(&drawables_instance, "indices").iter()
         .map(|v| {
           let typed_array = v.dyn_into::<js_sys::Uint16Array>().unwrap();
-          uint16_array_to_new_vec(&typed_array)
+          uint16_array_to_new_vec(&typed_array).into_boxed_slice()
         })
         .collect();
 
-      let parent_part_indices: Vec<_> = get_member_array(&drawables_instance, "parentPartIndices").iter()
+      let parent_part_indices: Box<[_]> = get_member_array(&drawables_instance, "parentPartIndices").iter()
         .map(|value| {
           let number = value.as_f64().unwrap();
           (number > 0.0).then_some(number as usize)
@@ -1112,7 +1110,7 @@ pub mod sys {
     }
 
     pub fn to_aos(&self) -> Vec<public_api::Drawable> {
-      itertools::izip!(&self.ids, &self.constant_flagsets, &self.texture_indices, &self.mask_containers, &self.vertex_uv_containers, &self.triangle_index_containers, &self.parent_part_indices)
+      itertools::izip!(self.ids.iter(), self.constant_flagsets.iter(), self.texture_indices.iter(), self.mask_containers.iter(), self.vertex_uv_containers.iter(), self.triangle_index_containers.iter(), self.parent_part_indices.iter())
         .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index)| {
           public_api::Drawable {
             id: id.clone(),
