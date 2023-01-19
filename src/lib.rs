@@ -110,7 +110,7 @@ mod public_api {
   #[derive(Debug)]
   pub struct Drawable {
     pub id: String,
-    pub constant_flags: ConstantDrawableFlagSet,
+    pub constant_flagset: ConstantDrawableFlagSet,
     pub texture_index: usize,
     pub masks: Vec<usize>,
     pub vertex_uvs: Vec<Vector2>,
@@ -261,14 +261,16 @@ mod platform_impl {
         let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _);
         let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _);
 
-        let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _);
-        let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _);
+        let key_value_containers: Vec<_> = {
+          let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _);
+          let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _);
 
-        let key_value_containers: Vec<_> = itertools::izip!(key_counts, key_value_ptrs)
-          .map(|(&key_count, &key_value_ptr)| {
-            std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec()
-          })
-          .collect();
+          itertools::izip!(key_counts, key_value_ptrs)
+            .map(|(&key_count, &key_value_ptr)| {
+              std::slice::from_raw_parts(key_value_ptr, key_count.try_into().unwrap()).to_vec()
+            })
+            .collect()
+        };
 
         itertools::izip!(ids, types, minimum_values, maximum_values, default_values, key_value_containers)
           .map(|(id, ty, &minimum_value, &maximum_value, &default_value, key_value_container)| {
@@ -318,31 +320,38 @@ mod platform_impl {
           .map(|value| *value as usize)
           .collect();
 
-        let mask_counts = std::slice::from_raw_parts(csmGetDrawableMaskCounts(csm_model), count as _);
-        let mask_container_ptrs = std::slice::from_raw_parts(csmGetDrawableMasks(csm_model), count as _);
-        let mask_containers: Vec<_> = itertools::izip!(mask_counts, mask_container_ptrs)
-          .map(|(&mask_count, &mask_container_ptr)| {
-            std::slice::from_raw_parts(mask_container_ptr, mask_count as _).iter().map(|mask| *mask as usize).collect::<Vec<_>>()
-          })
-          .collect();
+        let mask_containers: Vec<_> = {
+          let mask_counts = std::slice::from_raw_parts(csmGetDrawableMaskCounts(csm_model), count as _);
+          let mask_container_ptrs = std::slice::from_raw_parts(csmGetDrawableMasks(csm_model), count as _);
 
-        let vertex_counts = std::slice::from_raw_parts(csmGetDrawableVertexCounts(csm_model), count as _);
-        let vertex_uv_ptrs = std::slice::from_raw_parts(csmGetDrawableVertexUvs(csm_model), count as _);
+          itertools::izip!(mask_counts, mask_container_ptrs)
+            .map(|(&mask_count, &mask_container_ptr)| {
+              std::slice::from_raw_parts(mask_container_ptr, mask_count as _).iter().map(|mask| *mask as usize).collect::<Vec<_>>()
+            })
+            .collect()
+        };
 
-        let vertex_uv_containers: Vec<_> = itertools::izip!(vertex_counts, vertex_uv_ptrs)
-          .map(|(&vertex_count, &vertex_uv_ptr)| {
-            std::slice::from_raw_parts(vertex_uv_ptr as *const public_api::Vector2, vertex_count as _).to_vec()
-          })
-          .collect();
+        let vertex_uv_containers: Vec<_> = {
+          let vertex_counts = std::slice::from_raw_parts(csmGetDrawableVertexCounts(csm_model), count as _);
+          let vertex_uv_ptrs = std::slice::from_raw_parts(csmGetDrawableVertexUvs(csm_model), count as _);
 
-        let triangle_index_counts = std::slice::from_raw_parts(csmGetDrawableIndexCounts(csm_model), count as _);
-        let triangle_index_ptrs = std::slice::from_raw_parts(csmGetDrawableIndices(csm_model), count as _);
+          itertools::izip!(vertex_counts, vertex_uv_ptrs)
+            .map(|(&vertex_count, &vertex_uv_ptr)| {
+              std::slice::from_raw_parts(vertex_uv_ptr as *const public_api::Vector2, vertex_count as _).to_vec()
+            })
+            .collect()
+        };
 
-        let triangle_index_containers: Vec<_> = itertools::izip!(triangle_index_counts, triangle_index_ptrs)
-          .map(|(&triangle_index_count, &triangle_index_ptr)| {
-            std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec()
-          })
-          .collect();
+        let triangle_index_containers: Vec<_> = {
+          let triangle_index_counts = std::slice::from_raw_parts(csmGetDrawableIndexCounts(csm_model), count as _);
+          let triangle_index_ptrs = std::slice::from_raw_parts(csmGetDrawableIndices(csm_model), count as _);
+
+          itertools::izip!(triangle_index_counts, triangle_index_ptrs)
+            .map(|(&triangle_index_count, &triangle_index_ptr)| {
+              std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec()
+            })
+            .collect()
+        };
 
         let parent_part_indices: Vec<_> = std::slice::from_raw_parts(csmGetDrawableParentPartIndices(csm_model), count as _).iter()
           .map(|&value| (value > 0).then_some(value as usize)).collect();
@@ -351,7 +360,7 @@ mod platform_impl {
           .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index),| {
             public_api::Drawable {
               id,
-              constant_flags: constant_flagset,
+              constant_flagset,
               texture_index,
               masks: mask_container,
               vertex_uvs: vertex_uv_container,
@@ -367,7 +376,8 @@ mod platform_impl {
           csm_model,
           parameter_values: unsafe { std::slice::from_raw_parts_mut(csmGetParameterValues(csm_model), parameters.len()) },
           part_opactities: unsafe { std::slice::from_raw_parts_mut(csmGetPartOpacities(csm_model), parts.len()) },
-          drawable_dynamic_flags: unsafe { std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(csm_model) as *mut _, drawables.len()) },
+          drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(csm_model) as *mut _, drawables.len()) },
+          drawable_draw_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableDrawOrders(csm_model), drawables.len()) },
           drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawables.len()) },
           drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawables.len()) },
           drawable_multiply_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableMultiplyColors(csm_model) as *const _, drawables.len()) },
@@ -407,7 +417,8 @@ mod platform_impl {
     csm_model: *mut csmModel,
     parameter_values: &'static mut [f32],
     part_opactities: &'static mut [f32],
-    drawable_dynamic_flags: &'static mut [public_api::DynamicDrawableFlagSet],
+    drawable_dynamic_flagsets: &'static mut [public_api::DynamicDrawableFlagSet],
+    drawable_draw_orders: &'static [i32],
     drawable_render_orders: &'static [i32],
     drawable_opacities: &'static [f32],
     vertex_position_containers: VertexPositionContainers<'static>,
@@ -420,8 +431,9 @@ mod platform_impl {
     pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.parameter_values }
     pub fn part_opacities(&self) -> &[f32] { self.inner.part_opactities }
     pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opactities }
-    pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flags }
-    pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flags }
+    pub fn drawable_dynamic_flagsets(&self) -> &[public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
+    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
+    pub fn drawable_draw_orders(&self) -> &[i32] { &self.inner.drawable_draw_orders }
     pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders }
     pub fn drawable_opacities(&self) -> &[f32] { self.inner.drawable_opacities }
     pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] {
@@ -539,35 +551,18 @@ mod platform_impl {
   }
 
   impl public_api::ModelDynamic {
-    pub fn parameter_values(&self) -> &[f32] {
-      self.inner.js_model.scratch().parameter_values()
-    }
-    pub fn parameter_values_mut(&mut self) -> &mut [f32] {
-      self.inner.js_model.scratch_mut().parameter_values_mut()
-    }
-    pub fn part_opacities(&self) -> &[f32] {
-      self.inner.js_model.scratch().part_opacities()
-    }
-    pub fn part_opacities_mut(&mut self) -> &mut [f32] {
-      self.inner.js_model.scratch_mut().part_opacities_mut()
-    }
-    pub fn drawable_dynamic_flags(&self) -> &[public_api::DynamicDrawableFlagSet] {
-      self.inner.js_model.scratch().dynamic_flagsets()
-    }
-    pub fn drawable_dynamic_flags_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] {
-      self.inner.js_model.scratch_mut().dynamic_flagsets_mut()
-    }
-    pub fn drawable_render_orders(&self) -> &[i32] {
-      self.inner.js_model.scratch().render_orders()
-    }
-    pub fn drawable_opacities(&self) -> &[f32] {
-      self.inner.js_model.scratch().opacities()
-    }
-    pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] {
-      &self.inner.js_model.scratch().vertex_position_containers()
-    }
-    pub fn drawable_multiply_colors(&self) -> &[public_api::Vector4] { &self.inner.js_model.scratch().multiply_colors() }
-    pub fn drawable_screen_colors(&self) -> &[public_api::Vector4] { self.inner.js_model.scratch().screen_colors()}
+    pub fn parameter_values(&self) -> &[f32] { self.inner.js_model.scratch().parameter_values() }
+    pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.js_model.scratch_mut().parameter_values_mut() }
+    pub fn part_opacities(&self) -> &[f32] { self.inner.js_model.scratch().part_opacities() }
+    pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.js_model.scratch_mut().part_opacities_mut() }
+    pub fn drawable_dynamic_flagsets(&self) -> &[public_api::DynamicDrawableFlagSet] { self.inner.js_model.scratch().drawable_dynamic_flagsets() }
+    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { self.inner.js_model.scratch_mut().drawable_dynamic_flagsets_mut() }
+    pub fn drawable_draw_orders(&self) -> &[i32] { &self.inner.js_model.scratch().drawable_draw_orders() }
+    pub fn drawable_render_orders(&self) -> &[i32] { self.inner.js_model.scratch().drawable_render_orders() }
+    pub fn drawable_opacities(&self) -> &[f32] { self.inner.js_model.scratch().drawable_opacities() }
+    pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] { &self.inner.js_model.scratch().drawable_vertex_position_containers() }
+    pub fn drawable_multiply_colors(&self) -> &[public_api::Vector4] { &self.inner.js_model.scratch().drawable_multiply_colors() }
+    pub fn drawable_screen_colors(&self) -> &[public_api::Vector4] { self.inner.js_model.scratch().drawable_screen_colors()}
 
     pub fn update(&mut self) {
       self.inner.js_model.update();
@@ -654,6 +649,7 @@ pub mod sys {
     parameter_values: Box<[f32]>,
     part_opacities: Box<[f32]>,
     drawable_dynamic_flagsets: Box<[public_api::DynamicDrawableFlagSet]>,
+    drawable_draw_orders: Box<[i32]>,
     drawable_render_orders: Box<[i32]>,
     drawable_opacities: Box<[f32]>,
     drawable_vertex_position_containers: Box<[Box<[public_api::Vector2]>]>,
@@ -666,18 +662,20 @@ pub mod sys {
     pub fn parameter_values_mut(&mut self) -> &mut [f32] { &mut self.parameter_values }
     pub fn part_opacities(&self) -> &[f32] { &self.part_opacities }
     pub fn part_opacities_mut(&mut self) -> &mut [f32] { &mut self.part_opacities }
-    pub fn dynamic_flagsets(&self) -> &[public_api::DynamicDrawableFlagSet] { &self.drawable_dynamic_flagsets }
-    pub fn dynamic_flagsets_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { &mut self.drawable_dynamic_flagsets }
-    pub fn render_orders(&self) -> & [i32] { &self.drawable_render_orders }
-    pub fn opacities(&self) -> &[f32] { &self.drawable_opacities }
-    pub fn vertex_position_containers(&self) -> &[&[public_api::Vector2]] { &self.drawable_vertex_position_container_refs }
-    pub fn multiply_colors(&self) -> &[public_api::Vector4] { &self.drawable_multiply_colors }
-    pub fn screen_colors(&self) -> &[public_api::Vector4] { &self.drawable_screen_colors }
+    pub fn drawable_dynamic_flagsets(&self) -> &[public_api::DynamicDrawableFlagSet] { &self.drawable_dynamic_flagsets }
+    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [public_api::DynamicDrawableFlagSet] { &mut self.drawable_dynamic_flagsets }
+    pub fn drawable_draw_orders(&self) -> &[i32] { &self.drawable_draw_orders }
+    pub fn drawable_render_orders(&self) -> & [i32] { &self.drawable_render_orders }
+    pub fn drawable_opacities(&self) -> &[f32] { &self.drawable_opacities }
+    pub fn drawable_vertex_position_containers(&self) -> &[&[public_api::Vector2]] { &self.drawable_vertex_position_container_refs }
+    pub fn drawable_multiply_colors(&self) -> &[public_api::Vector4] { &self.drawable_multiply_colors }
+    pub fn drawable_screen_colors(&self) -> &[public_api::Vector4] { &self.drawable_screen_colors }
 
     fn new(parameters: &JsParameters, parts: &JsParts, drawables: &JsDrawables) -> Self {
       let parameter_values = float32_array_to_new_vec(&parameters.values).into_boxed_slice();
       let part_opacities = float32_array_to_new_vec(&parts.opacities).into_boxed_slice();
       let drawable_dynamic_flagsets = uint8_array_to_new_vec::<public_api::DynamicDrawableFlagSet>(&drawables.dynamic_flags).into_boxed_slice();
+      let drawable_draw_orders = int32_array_to_new_vec(&drawables.draw_orders).into_boxed_slice();
       let drawable_render_orders = int32_array_to_new_vec(&drawables.render_orders).into_boxed_slice();
       let drawable_opacities = float32_array_to_new_vec(&drawables.opacities).into_boxed_slice();
 
@@ -701,6 +699,7 @@ pub mod sys {
         parameter_values,
         part_opacities,
         drawable_dynamic_flagsets,
+        drawable_draw_orders,
         drawable_render_orders,
         drawable_opacities,
         drawable_vertex_position_containers,
@@ -727,6 +726,7 @@ pub mod sys {
     fn load_from(&mut self, drawables: &JsDrawables) {
       self.load_dynamic_flags_from(drawables);
 
+      int32_array_overwrite_slice(&mut self.drawable_draw_orders, &drawables.draw_orders);
       int32_array_overwrite_slice(&mut self.drawable_render_orders, &drawables.render_orders);
       f32_array_overwrite_slice(&mut self.drawable_opacities, &drawables.opacities);
 
@@ -785,6 +785,8 @@ pub mod sys {
     drawables_instance: wasm_bindgen::JsValue,
     /// `Live2DCubismCore.Drawables.dynamicFlags` member.
     dynamic_flags: js_sys::Uint8Array,
+    /// `Live2DCubismCore.Drawables.drawOrders` member.
+    draw_orders: js_sys::Int32Array,
     /// `Live2DCubismCore.Drawables.renderOrders` member.
     render_orders: js_sys::Int32Array,
     /// `Live2DCubismCore.Drawables.opacities` member.
@@ -1081,6 +1083,7 @@ pub mod sys {
         .collect();
 
       let dynamic_flags = get_member_value(&drawables_instance, "dynamicFlags").dyn_into::<js_sys::Uint8Array>().unwrap();
+      let draw_orders = get_member_value(&drawables_instance, "drawOrders").dyn_into::<js_sys::Int32Array>().unwrap();
       let render_orders = get_member_value(&drawables_instance, "renderOrders").dyn_into::<js_sys::Int32Array>().unwrap();
       let opacities = get_member_value(&drawables_instance, "opacities").dyn_into::<js_sys::Float32Array>().unwrap();
       let vertex_positions = get_member_array(&drawables_instance, "vertexPositions");
@@ -1098,6 +1101,7 @@ pub mod sys {
 
         drawables_instance,
         dynamic_flags,
+        draw_orders,
         render_orders,
         opacities,
         vertex_positions,
@@ -1112,7 +1116,7 @@ pub mod sys {
         .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index)| {
           public_api::Drawable {
             id: id.clone(),
-            constant_flags: *constant_flagset,
+            constant_flagset: *constant_flagset,
             texture_index: *texture_index,
             masks: mask_container.clone(),
             vertex_uvs: vertex_uv_container.clone(),
@@ -1247,17 +1251,18 @@ pub mod public_api_tests {
 
     log::info!("Parameter values: {:?}", model.dynamic.parameter_values());
     log::info!("Part opacities: {:?}", model.dynamic.part_opacities());
-    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flags()[0]);
-    log::info!("Drawable render orders: {:?}", model.dynamic.drawable_render_orders()[0]);
-    log::info!("Drawable opacities: {:?}", model.dynamic.drawable_opacities()[0]);
-    log::info!("Drawable vertex position_containers: {:?}", model.dynamic.drawable_vertex_position_containers()[0]);
+    log::info!("Drawables[0] dynamic flagset: {:?}", model.dynamic.drawable_dynamic_flagsets()[0]);
+    log::info!("Drawable draw orders: {:?}", model.dynamic.drawable_draw_orders());
+    log::info!("Drawable render orders: {:?}", model.dynamic.drawable_render_orders());
+    log::info!("Drawable opacities: {:?}", model.dynamic.drawable_opacities());
+    log::info!("Drawables[0] vertex position container: {:?}", model.dynamic.drawable_vertex_position_containers()[0]);
     log::info!("Drawable multiply colors: {:?}", model.dynamic.drawable_multiply_colors());
     log::info!("Drawable screen colors: {:?}", model.dynamic.drawable_screen_colors());
 
     model.dynamic.reset_drawable_dynamic_flags();
     model.dynamic.update();
 
-    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flags()[0]);
+    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flagsets()[0]);
   }
 
   #[cfg(not(target_arch = "wasm32"))]
