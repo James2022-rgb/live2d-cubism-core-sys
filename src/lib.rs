@@ -597,9 +597,6 @@ pub mod sys {
     pub cubism_version: public_api::CubismVersion,
     pub latest_supported_moc_version: public_api::MocVersion,
 
-    /// The `Live2DCubismCore` namespace object.
-    live2d_cubism_core_namespace: wasm_bindgen::JsValue,
-
     /// The `Live2DCubismCore.Version` class object.
     version_class: wasm_bindgen::JsValue,
     /// The `Live2DCubismCore.Version.csmGetMocVersion` static method.
@@ -608,12 +605,12 @@ pub mod sys {
     /// The `Live2DCubismCore.Moc` class object.
     moc_class: wasm_bindgen::JsValue,
     /// The`Live2DCubismCore.Moc.fromArrayBuffer` static method.
-    fromArrayBuffer: js_sys::Function,
+    from_array_buffer_method: js_sys::Function,
 
     /// The `Live2DCubismCore.Model` class object.
     model_class: wasm_bindgen::JsValue,
     /// The `Live2DCubismCore.Model.fromMoc` static method.
-    fromMoc: js_sys::Function,
+    from_moc_method: js_sys::Function,
 
     /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
     reset_dynamic_flags_method: js_sys::Function,
@@ -622,8 +619,6 @@ pub mod sys {
   #[derive(Debug)]
   pub struct JsMoc {
     pub version: public_api::MocVersion,
-    /// The `Live2DCubismCore.Moc` class object.
-    moc_class: wasm_bindgen::JsValue,
     /// An `Live2DCubismCore.Moc` instance object, acquired through the `Live2DCubismCore.Moc.fromArrayBuffer` static method.
     moc_instance: wasm_bindgen::JsValue,
   }
@@ -749,9 +744,6 @@ pub mod sys {
     pub default_values: Box<[f32]>,
     pub key_value_containers: Box<[Box<[f32]>]>,
 
-    /// The `parameters` member variable of a `Live2DCubismCore.Model` instance object.
-    /// An instance of `Live2DCubismCore.Parameters` class object.
-    parameters_instance: wasm_bindgen::JsValue,
     /// `Live2DCubismCore.Parameters.values` member.
     values: js_sys::Float32Array,
   }
@@ -761,9 +753,6 @@ pub mod sys {
     pub ids: Box<[String]>,
     pub parent_part_indices: Box<[Option<usize>]>,
 
-    /// The `parts` member variable of a `Live2DCubismCore.Model` instance object.
-    /// An instance of `Live2DCubismCore.Parts` class object.
-    parts_instance: wasm_bindgen::JsValue,
     /// `Live2DCubismCore.Parts.opacities` member.
     opacities: js_sys::Float32Array,
   }
@@ -820,10 +809,10 @@ pub mod sys {
       let csmGetMocVersion = get_member_function(&version_class, "csmGetMocVersion");
 
       let moc_class = get_member_value(&live2d_cubism_core_namespace, "Moc");
-      let fromArrayBuffer = get_member_function(&moc_class, "fromArrayBuffer");
+      let from_array_buffer_method = get_member_function(&moc_class, "fromArrayBuffer");
 
       let model_class = get_member_value(&live2d_cubism_core_namespace, "Model");
-      let fromMoc = get_member_function(&model_class, "fromMoc");
+      let from_moc_method = get_member_function(&model_class, "fromMoc");
 
       let drawables_class = get_member_value(&live2d_cubism_core_namespace, "Drawables");
       let prototype = get_member_value(&drawables_class, "prototype");
@@ -833,16 +822,14 @@ pub mod sys {
         cubism_version,
         latest_supported_moc_version,
 
-        live2d_cubism_core_namespace,
-
         version_class,
         csmGetMocVersion,
 
         moc_class,
-        fromArrayBuffer,
+        from_array_buffer_method,
 
         model_class,
-        fromMoc,
+        from_moc_method,
 
         reset_dynamic_flags_method,
       }
@@ -853,14 +840,13 @@ pub mod sys {
     // TODO: Error.
     pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> JsMoc {
       // `Version.csmGetMocVersion` requires a `Moc`, unlike the `csmGetMocVersion` in the Native SDK.
-      let moc_instance = self.fromArrayBuffer.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
+      let moc_instance = self.from_array_buffer_method.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
       assert!(!moc_instance.is_undefined());
 
       let version = self.get_moc_version(&moc_instance, &array_buffer);
 
       JsMoc {
         version,
-        moc_class: self.moc_class.clone(),
         moc_instance,
       }
     }
@@ -881,7 +867,7 @@ pub mod sys {
     }
 
     pub fn model_from_moc(&self, moc: &JsMoc) -> JsModel {
-      let model_instance = self.fromMoc.call1(&self.moc_class, moc.moc_instance.as_ref()).unwrap();
+      let model_instance = self.from_moc_method.call1(&self.moc_class, moc.moc_instance.as_ref()).unwrap();
 
       let prototype = get_member_value(&self.model_class, "prototype");
       let update_method = get_member_function(&prototype, "update");
@@ -940,6 +926,7 @@ pub mod sys {
   }
 
   impl JsParameters {
+    /// * `parameters_instance` - The `parameters` member variable of a `Live2DCubismCore.Model` instance object, i.e an instance of `Live2DCubismCore.Parameters` class object.
     fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
       let ids: Box<[_]> = get_member_array(&parameters_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
@@ -979,7 +966,6 @@ pub mod sys {
         default_values,
         key_value_containers,
 
-        parameters_instance,
         values,
       }
     }
@@ -1000,6 +986,7 @@ pub mod sys {
   }
 
   impl JsParts {
+    /// * `parts_instance` - The `parts` member variable of a `Live2DCubismCore.Model` instance object, i.e an instance of `Live2DCubismCore.Parts` class object.
     fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
       let ids: Box<[_]> = get_member_array(&parts_instance, "ids").iter()
         .map(|value| value.as_string().unwrap())
@@ -1018,7 +1005,6 @@ pub mod sys {
         ids,
         parent_part_indices,
 
-        parts_instance,
         opacities,
       }
     }
