@@ -63,9 +63,8 @@ pub mod core_api_tests {
       cubism_core.moc_from_bytes(invalid_moc_bytes).expect_err("moc_from_bytes should fail");
     }
 
-    // FIXME: Remove use of `AdditionalSamples`.
-    // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.moc3"));
-    let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
+    let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/Samples/Resources/Hiyori/Hiyori.moc3"));
+    // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
 
     let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
     log::info!("Moc version: {}", moc.version);
