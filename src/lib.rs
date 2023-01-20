@@ -54,6 +54,16 @@ pub mod core_api_tests {
       console_log::init_with_level(log::Level::Trace).unwrap();
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+      // SAFETY:
+      // 1. We're fine with the memory leak.
+      // 2. We don't directly use `csmGetLogFunction` or `csmSetLogFunction`.
+      unsafe {
+        core::CubismCore::set_log_function(|message| log::info!("Live2D Cubism Core: {}", message));
+      }
+    }
+
     let cubism_core = core::CubismCore::default();
     log::info!("Live2D Cubism Core Version: {}", cubism_core.version());
     log::info!("Latest supported moc version: {}", cubism_core.latest_supported_moc_version());

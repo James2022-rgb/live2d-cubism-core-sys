@@ -180,6 +180,34 @@ mod platform_impl {
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore;
   impl super::CubismCore {
+    /// Sets a global log handler function to intercept _Live2D® Cubism SDK Core_'s internal log.
+    ///
+    /// ## Safety
+    /// - Causes a slight memory leak (a heap-allocated closure).
+    /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`. This is a precaution since their threading behavior is not well documented.
+    ///
+    /// ## Platform-specific
+    /// - **Web:** Unsupported.
+    pub unsafe fn set_log_function<F>(mut f: F)
+    where
+      F: FnMut(&str) + Send + 'static,
+    {
+      let trampoline = Box::new(move |message: *const core::ffi::c_char| {
+        let str = unsafe { core::ffi::CStr::from_ptr(message).to_str().unwrap() };
+        f(str);
+      });
+      let trampoline = Box::leak(trampoline);
+
+      let trampoline = libffi::high::ClosureMut1::new(trampoline);
+      let &code = trampoline.code_ptr();
+
+      unsafe {
+        csmSetLogFunction(Some(std::mem::transmute(code)));
+      }
+
+      std::mem::forget(trampoline);
+    }
+
     pub fn version(&self) -> super::CubismVersion {
       super::CubismVersion(unsafe { csmGetVersion() })
     }
