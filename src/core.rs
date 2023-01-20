@@ -184,7 +184,8 @@ mod platform_impl {
     ///
     /// ## Safety
     /// - Causes a slight memory leak (a heap-allocated closure).
-    /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`. This is a precaution since their threading behavior is not well documented.
+    /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`.
+    ///   This is a precaution since their threading behavior is not well documented.
     ///
     /// ## Platform-specific
     /// - **Web:** Unsupported.
@@ -390,7 +391,11 @@ mod platform_impl {
 
           itertools::izip!(triangle_index_counts, triangle_index_ptrs)
             .map(|(&triangle_index_count, &triangle_index_ptr)| {
-              std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec().into_boxed_slice()
+              if triangle_index_count > 0 {
+                std::slice::from_raw_parts(triangle_index_ptr, triangle_index_count as _).to_vec().into_boxed_slice()
+              } else {
+                [].into()
+              }
             })
             .collect()
         };
