@@ -69,7 +69,7 @@ pub mod core_api_tests {
     let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
     log::info!("Moc version: {}", moc.version);
 
-    let mut model = moc.to_model();
+    let mut model = core::Model::from_moc(&moc);
 
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);

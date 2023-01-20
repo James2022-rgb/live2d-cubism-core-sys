@@ -73,8 +73,8 @@ pub struct CubismCore {
   inner: platform_impl::PlatformCubismCore,
 }
 
-#[derive(Debug)]
 /// Cubism moc.
+#[derive(Debug)]
 pub struct Moc {
   pub version: MocVersion,
   inner: platform_impl::PlatformMoc,
@@ -92,8 +92,8 @@ pub struct Model {
   inner: platform_impl::PlatformModel,
 }
 
-#[derive(Debug, Clone, Copy)]
 /// Model canvas.
+#[derive(Debug, Clone, Copy)]
 pub struct CanvasInfo {
   /// Canvas dimensions.
   pub size_in_pixels: (f32, f32),
@@ -225,18 +225,25 @@ mod platform_impl {
     /// the memory blocks for all `csmModel`s generated from it.
     moc_storage: Arc<AlignedStorage>,
   }
-  impl super::Moc {
-    pub fn to_model(&self) -> super::Model {
+
+  #[allow(dead_code)]
+  pub struct PlatformModel {
+    model_storage: AlignedStorage,
+    /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
+    moc_storage: Arc<AlignedStorage>,
+  }
+  impl super::Model {
+    pub fn from_moc(moc: &super::Moc) -> Self {
       const MODEL_ALIGNMENT: usize = csmAlignofModel as usize;
 
       let storage_size = unsafe {
-        csmGetSizeofModel(self.inner.csm_moc)
+        csmGetSizeofModel(moc.inner.csm_moc)
       };
 
       let mut aligned_storage = AlignedStorage::new(storage_size as _, MODEL_ALIGNMENT).unwrap();
 
       let csm_model = unsafe {
-        csmInitializeModelInPlace(self.inner.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
+        csmInitializeModelInPlace(moc.inner.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
       };
 
       let canvas_info = unsafe {
@@ -396,25 +403,19 @@ mod platform_impl {
 
       let inner = PlatformModel {
         model_storage: aligned_storage,
-        moc_storage: Arc::clone(&self.inner.moc_storage),
+        moc_storage: Arc::clone(&moc.inner.moc_storage),
       };
 
-      super::Model {
+      Self {
         canvas_info,
         parameters,
         parts,
         drawables,
         dynamic,
+
         inner,
       }
     }
-  }
-
-  #[allow(dead_code)]
-  pub struct PlatformModel {
-    model_storage: AlignedStorage,
-    /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
-    moc_storage: Arc<AlignedStorage>,
   }
 
   #[derive(Debug)]
@@ -527,9 +528,11 @@ mod platform_impl {
     js_moc: JsMoc,
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
-  impl super::Moc {
-    pub fn to_model(&self) -> super::Model {
-      let js_model = self.inner.js_cubism_core.model_from_moc(&self.inner.js_moc);
+
+  pub struct PlatformModel;
+  impl super::Model {
+    pub fn from_moc(moc: &super::Moc) -> Self {
+      let js_model = moc.inner.js_cubism_core.model_from_moc(&moc.inner.js_moc);
 
       let canvas_info = js_model.canvas_info;
       let parameters = js_model.parameters.to_aos().into_boxed_slice();
@@ -542,18 +545,17 @@ mod platform_impl {
         }
       };
 
-      super::Model {
+      Self {
         canvas_info,
         parameters,
         parts,
         drawables,
         dynamic,
+
         inner: PlatformModel,
       }
     }
   }
-
-  pub struct PlatformModel;
 
   #[derive(Debug)]
   pub struct PlatformModelDynamic {
