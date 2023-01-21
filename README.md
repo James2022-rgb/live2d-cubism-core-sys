@@ -4,7 +4,7 @@
 
 Rust bindings to the Live2D Cubism SDK Core library.
 Provides:
-- low-level, unsafe Rust bindings to the C interface for Native
+- direct, unsafe Rust bindings to the C interface for Native
 - a higher-level interface for Native and Web (optional but enabled by default)
 
 License
@@ -21,7 +21,7 @@ This crate is licensed under the [MIT license](LICENSE-MIT).
 
 SDK version support
 ----------------------------
-Only these versions are supported:
+Only these versions have been tested:
 |        | Version |
 | ------ | ------- |
 | Native | 4-r.5.1 |
@@ -57,7 +57,7 @@ https://www.live2d.com/en/download/cubism-sdk/
 
 Feature gate
 ----------------------------
-The `core` feature, enabled by default, provides high-level interface on top of the unsafe bindings.
+The `core` feature, enabled by default, provides a high-level interface on top of the direct unsafe bindings.
 
 Usage
 ----------------------------
