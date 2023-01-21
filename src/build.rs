@@ -5,8 +5,6 @@ use std::{
 };
 
 fn main() {
-  assert!(cfg!(target_os = "windows"), "Building only supported on Windows.");
-
   let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
   match target_arch.as_str() {
     "wasm32" => handle_target_web(),

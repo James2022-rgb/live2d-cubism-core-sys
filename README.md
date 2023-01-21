@@ -29,12 +29,12 @@ Only these versions are supported:
 
 Build target support
 ----------------------------
-|                            | Windows            |
-| -------------------------- | ------------------ |
-| `x86_64-pc-windows-msvc`   | :white_check_mark: |
-| `aarch64-linux-android`    | :white_check_mark: |
-| `x86_64-unknown-linux-gnu` |                    |
-| `wasm32-unknown-unknown`   | :white_check_mark: |
+|                            | Windows            | Linux              |
+| -------------------------- | ------------------ | ------------------ |
+| `x86_64-pc-windows-msvc`   | :white_check_mark: |                    |
+| `aarch64-linux-android`    | :white_check_mark: |                    |
+| `x86_64-unknown-linux-gnu` |                    | :white_check_mark: |
+| `wasm32-unknown-unknown`   | :white_check_mark: | :white_check_mark: |
 
 `aarch64-unknown-linux-gnu` support is unfortunately not possible, due to Live2D Inc. not providing a binary for this target in the SDK.
 
