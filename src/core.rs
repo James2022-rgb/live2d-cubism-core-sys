@@ -188,7 +188,9 @@ mod platform_impl {
     ///   This is a precaution since their threading behavior is not well documented.
     ///
     /// ## Platform-specific
+    /// - **Android:** Unsupported; `libffi-sys-rs` fails to build for Android on Windows.
     /// - **Web:** Unsupported.
+    #[cfg(not(target_os = "android"))]
     pub unsafe fn set_log_function<F>(mut f: F)
     where
       F: FnMut(&str) + Send + 'static,

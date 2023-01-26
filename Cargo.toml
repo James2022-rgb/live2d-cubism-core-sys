@@ -24,7 +24,8 @@ flagset = { version = "0.4.3", optional = true }
 mint = { version = "0.5.9", optional = true }
 itertools = { version = "0.10.5", optional = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))'.dependencies]
+# libffi-sys-rs fails to build for Android on Windows host.
 libffi = "3.1.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
