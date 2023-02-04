@@ -257,6 +257,8 @@ mod platform_impl {
     moc_storage: Arc<AlignedStorage>,
   }
 
+  unsafe impl Send for PlatformMoc {}
+
   #[allow(dead_code)]
   pub struct PlatformModel {
     model_storage: AlignedStorage,
@@ -466,6 +468,8 @@ mod platform_impl {
     drawable_multiply_colors: &'static [super::Vector4],
     drawable_screen_colors: &'static [super::Vector4],
   }
+
+  unsafe impl Send for PlatformModelDynamic {}
 
   impl super::ModelDynamic {
     pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values }
