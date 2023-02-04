@@ -10,6 +10,8 @@ pub struct AlignedStorage {
   layout: Layout,
 }
 
+unsafe impl Send for AlignedStorage {}
+
 impl AlignedStorage {
   pub fn new(size: usize, alignment: usize) -> Result<Self, LayoutError>  {
     let layout = Layout::from_size_align(size, alignment)?;
