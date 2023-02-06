@@ -1,6 +1,6 @@
 #![cfg(feature = "core")]
 
-use static_assertions::{assert_eq_align, assert_eq_size};
+use static_assertions::{assert_eq_align, assert_eq_size, assert_impl_all};
 use thiserror::Error;
 use shrinkwraprs::Shrinkwrap;
 use derive_more::Display;
@@ -78,6 +78,11 @@ pub struct CubismCore {
 pub struct Moc {
   pub version: MocVersion,
   inner: platform_impl::PlatformMoc,
+}
+
+if_native! {
+  assert_impl_all!(Moc: Send, Sync);
+  assert_impl_all!(Model: Send, Sync);
 }
 
 /// Cubism model.
@@ -257,7 +262,9 @@ mod platform_impl {
     moc_storage: Arc<AlignedStorage>,
   }
 
+  // SAFETY: The underlying `csmMoc` is never mutated.
   unsafe impl Send for PlatformMoc {}
+  unsafe impl Sync for PlatformMoc {}
 
   #[allow(dead_code)]
   pub struct PlatformModel {
@@ -469,7 +476,9 @@ mod platform_impl {
     drawable_screen_colors: &'static [super::Vector4],
   }
 
+  // SAFETY: The underlying `csmModel` is never mutated except through methods taking a mutable reference.
   unsafe impl Send for PlatformModelDynamic {}
+  unsafe impl Sync for PlatformModelDynamic {}
 
   impl super::ModelDynamic {
     pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values }
@@ -1219,3 +1228,15 @@ mod platform_impl {
     }
   }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+macro_rules! if_native {
+  ($($code:tt)*) => {
+    $($code)*
+  };
+}
+#[cfg(target_arch = "wasm32")]
+macro_rules! if_native {
+  ($($code:tt)*) => {};
+}
+use if_native;

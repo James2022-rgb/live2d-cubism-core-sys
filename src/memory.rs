@@ -10,7 +10,10 @@ pub struct AlignedStorage {
   layout: Layout,
 }
 
+// SAFETY: The content of the managed memory block pointed to by `ptr`
+// is never mutated except using methods that take a mutable reference.
 unsafe impl Send for AlignedStorage {}
+unsafe impl Sync for AlignedStorage {}
 
 impl AlignedStorage {
   pub fn new(size: usize, alignment: usize) -> Result<Self, LayoutError>  {
