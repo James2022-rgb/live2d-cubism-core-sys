@@ -11,7 +11,7 @@ build = "src/build.rs"
 
 [features]
 default = ["core"]
-core = ["dep:log", "dep:static_assertions", "dep:thiserror", "dep:shrinkwraprs", "dep:derive_more", "dep:num_enum", "dep:flagset", "dep:mint", "dep:itertools"]
+core = ["dep:log", "dep:static_assertions", "dep:thiserror", "dep:shrinkwraprs", "dep:derive_more", "dep:num_enum", "dep:flagset", "dep:mint", "dep:itertools", "dep:parking_lot"]
 
 [dependencies]
 log = { version = "0.4", optional = true }
@@ -23,6 +23,7 @@ num_enum = { version = "0.5.7", optional = true }
 flagset = { version = "0.4.3", optional = true }
 mint = { version = "0.5.9", optional = true }
 itertools = { version = "0.10.5", optional = true }
+parking_lot = { version = "0.12.1", optional = true }
 
 [target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))'.dependencies]
 # libffi-sys-rs fails to build for Android on Windows host.

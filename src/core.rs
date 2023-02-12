@@ -6,6 +6,7 @@ use shrinkwraprs::Shrinkwrap;
 use derive_more::Display;
 use num_enum::TryFromPrimitive;
 use flagset::{FlagSet, flags};
+use parking_lot::RwLock;
 
 pub type Vector2 = mint::Vector2<f32>;
 pub type Vector4 = mint::Vector4<f32>;
@@ -91,7 +92,7 @@ pub struct Model {
   pub parameters: Box<[Parameter]>,
   pub parts: Box<[Part]>,
   pub drawables: Box<[Drawable]>,
-  pub dynamic: ModelDynamic,
+  pub dynamic: RwLock<ModelDynamic>,
 
   #[allow(unused)]
   inner: platform_impl::PlatformModel,
@@ -172,6 +173,7 @@ mod platform_impl {
   use std::sync::Arc;
 
   use static_assertions::{assert_eq_align, assert_eq_size};
+  use parking_lot::RwLock;
 
   use crate::memory::AlignedStorage;
 
@@ -455,7 +457,7 @@ mod platform_impl {
         parameters,
         parts,
         drawables,
-        dynamic,
+        dynamic: RwLock::new(dynamic),
 
         inner,
       }
@@ -487,13 +489,13 @@ mod platform_impl {
     pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opactities }
     pub fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
     pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
-    pub fn drawable_draw_orders(&self) -> &[i32] { &self.inner.drawable_draw_orders }
+    pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.drawable_draw_orders }
     pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders }
     pub fn drawable_opacities(&self) -> &[f32] { self.inner.drawable_opacities }
     pub fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] {
       &self.inner.vertex_position_containers.inner
     }
-    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { &self.inner.drawable_multiply_colors }
+    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { self.inner.drawable_multiply_colors }
     pub fn drawable_screen_colors(&self) -> &[super::Vector4] { self.inner.drawable_screen_colors }
 
     pub fn update(&mut self) {
@@ -542,6 +544,7 @@ mod platform_impl {
 mod platform_impl {
   use std::sync::Arc;
 
+  use parking_lot::RwLock;
   use js::*;
 
   #[derive(Debug, Default)]
@@ -598,7 +601,7 @@ mod platform_impl {
         parameters,
         parts,
         drawables,
-        dynamic,
+        dynamic: RwLock::new(dynamic),
 
         inner: PlatformModel,
       }
@@ -617,11 +620,11 @@ mod platform_impl {
     pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.js_model.scratch.part_opacities_mut() }
     pub fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] { self.inner.js_model.scratch.drawable_dynamic_flagsets() }
     pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] { self.inner.js_model.scratch.drawable_dynamic_flagsets_mut() }
-    pub fn drawable_draw_orders(&self) -> &[i32] { &self.inner.js_model.scratch.drawable_draw_orders() }
+    pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.js_model.scratch.drawable_draw_orders() }
     pub fn drawable_render_orders(&self) -> &[i32] { self.inner.js_model.scratch.drawable_render_orders() }
     pub fn drawable_opacities(&self) -> &[f32] { self.inner.js_model.scratch.drawable_opacities() }
-    pub fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] { &self.inner.js_model.scratch.drawable_vertex_position_containers() }
-    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { &self.inner.js_model.scratch.drawable_multiply_colors() }
+    pub fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] { self.inner.js_model.scratch.drawable_vertex_position_containers() }
+    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { self.inner.js_model.scratch.drawable_multiply_colors() }
     pub fn drawable_screen_colors(&self) -> &[super::Vector4] { self.inner.js_model.scratch.drawable_screen_colors()}
 
     pub fn update(&mut self) {

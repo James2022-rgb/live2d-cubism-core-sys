@@ -79,27 +79,38 @@ pub mod core_api_tests {
     let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
     log::info!("Moc version: {}", moc.version);
 
-    let mut model = core::Model::from_moc(&moc);
+    let model = core::Model::from_moc(&moc);
 
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);
     log::info!("{:?}", model.parts);
     log::info!("{:?}", model.drawables);
 
-    log::info!("Parameter values: {:?}", model.dynamic.parameter_values());
-    log::info!("Part opacities: {:?}", model.dynamic.part_opacities());
-    log::info!("Drawables[0] dynamic flagset: {:?}", model.dynamic.drawable_dynamic_flagsets()[0]);
-    log::info!("Drawable draw orders: {:?}", model.dynamic.drawable_draw_orders());
-    log::info!("Drawable render orders: {:?}", model.dynamic.drawable_render_orders());
-    log::info!("Drawable opacities: {:?}", model.dynamic.drawable_opacities());
-    log::info!("Drawables[0] vertex position container: {:?}", model.dynamic.drawable_vertex_position_containers()[0]);
-    log::info!("Drawable multiply colors: {:?}", model.dynamic.drawable_multiply_colors());
-    log::info!("Drawable screen colors: {:?}", model.dynamic.drawable_screen_colors());
+    {
+      let dynamic = model.dynamic.read();
 
-    model.dynamic.reset_drawable_dynamic_flags();
-    model.dynamic.update();
+      log::info!("Parameter values: {:?}", dynamic.parameter_values());
+      log::info!("Part opacities: {:?}", dynamic.part_opacities());
+      log::info!("Drawables[0] dynamic flagset: {:?}", dynamic.drawable_dynamic_flagsets()[0]);
+      log::info!("Drawable draw orders: {:?}", dynamic.drawable_draw_orders());
+      log::info!("Drawable render orders: {:?}", dynamic.drawable_render_orders());
+      log::info!("Drawable opacities: {:?}", dynamic.drawable_opacities());
+      log::info!("Drawables[0] vertex position container: {:?}", dynamic.drawable_vertex_position_containers()[0]);
+      log::info!("Drawable multiply colors: {:?}", dynamic.drawable_multiply_colors());
+      log::info!("Drawable screen colors: {:?}", dynamic.drawable_screen_colors());
+    }
+    {
+      let mut dynamic = model.dynamic.write();
 
-    log::info!("Drawable dynamic flags: {:?}", model.dynamic.drawable_dynamic_flagsets()[0]);
+      dynamic.reset_drawable_dynamic_flags();
+      dynamic.update();
+    }
+
+    {
+      let dynamic = model.dynamic.read();
+
+      log::info!("Drawable dynamic flags: {:?}", dynamic.drawable_dynamic_flagsets()[0]);
+    }
   }
 
   #[cfg(not(target_arch = "wasm32"))]
