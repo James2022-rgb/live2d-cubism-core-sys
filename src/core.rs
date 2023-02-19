@@ -113,7 +113,7 @@ pub struct CanvasInfo {
 pub struct Parameter {
   pub id: String,
   pub ty: ParameterType,
-  pub value_range: std::ops::Range<f32>,
+  pub value_range: std::ops::RangeInclusive<f32>,
   pub default_value: f32,
   pub keys: Box<[f32]>,
 }
@@ -333,7 +333,7 @@ mod platform_impl {
             super::Parameter {
               id,
               ty,
-              value_range: minimum_value..maximum_value,
+              value_range: minimum_value..=maximum_value,
               default_value,
               keys: key_value_container.clone(),
             }
@@ -939,7 +939,7 @@ mod platform_impl {
             core::Parameter {
               id: id.clone(),
               ty: *ty,
-              value_range: *minimum_value..*maximum_value,
+              value_range: *minimum_value..=*maximum_value,
               default_value: *default_value,
               keys: key_value_container.clone(),
             }
