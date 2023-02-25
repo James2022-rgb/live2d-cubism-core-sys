@@ -82,8 +82,13 @@ use live2d_cubism_core_sys::core;
 let cubism_core = core::CubismCore::default();
 let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
 
-let mut model = core::Model::from_moc(&moc);
+let model = core::Model::from_moc(&moc);
 
-model.dynamic.reset_drawable_dynamic_flags();
-model.dynamic.update();
+{
+  let mut dynamic = model.dynamic.write();
+
+  dynamic.reset_drawable_dynamic_flags();
+  dynamic.update();
+}
+
 ```
