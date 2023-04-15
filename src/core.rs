@@ -1,6 +1,6 @@
 #![cfg(feature = "core")]
 
-use static_assertions::{assert_eq_align, assert_eq_size, assert_impl_all};
+use static_assertions::{assert_eq_align, assert_eq_size};
 use thiserror::Error;
 use shrinkwraprs::Shrinkwrap;
 use derive_more::Display;
@@ -82,6 +82,8 @@ pub struct Moc {
 }
 
 if_native! {
+  use static_assertions::assert_impl_all;
+
   assert_impl_all!(Moc: Send, Sync);
   assert_impl_all!(Model: Send, Sync);
 }
@@ -809,6 +811,7 @@ mod platform_impl {
           moc_instance,
         })
       }
+      #[allow(dead_code)]
       pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<JsMoc> {
         let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
         array.copy_from(bytes);
