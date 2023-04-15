@@ -18,8 +18,6 @@ pub mod core_api_tests {
     use wasm_bindgen_test::*;
   }
 
-  use super::*;
-
   #[cfg(not(target_arch = "wasm32"))]
   macro_rules! ENV_CUBISM_SDK_DIR {
     () => { env!("LIVE2D_CUBISM_SDK_NATIVE_DIR") };
@@ -29,7 +27,21 @@ pub mod core_api_tests {
     () => { env!("LIVE2D_CUBISM_SDK_WEB_DIR") };
   }
 
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn public_api_use() {
+    impl_public_api_use();
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  #[wasm_bindgen_test]
+  fn public_api_use() {
+    impl_public_api_use();
+  }
+
   fn impl_public_api_use() {
+    use crate::core as live2d_core;
+
     #[cfg(not(target_arch = "wasm32"))]
     {
       struct MyLogger;
@@ -60,11 +72,11 @@ pub mod core_api_tests {
       // 1. We're fine with the memory leak.
       // 2. We don't directly use `csmGetLogFunction` or `csmSetLogFunction`.
       unsafe {
-        core::CubismCore::set_log_function(|message| log::info!("Live2D Cubism Core: {}", message));
+        live2d_core::CubismCore::set_log_function(|message| log::info!("Live2D Cubism Core: {}", message));
       }
     }
 
-    let cubism_core = core::CubismCore::default();
+    let cubism_core = live2d_core::CubismCore::default();
     log::info!("Live2D Cubism Core Version: {}", cubism_core.version());
     log::info!("Latest supported moc version: {}", cubism_core.latest_supported_moc_version());
 
@@ -79,7 +91,7 @@ pub mod core_api_tests {
     let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
     log::info!("Moc version: {}", moc.version);
 
-    let model = core::Model::from_moc(&moc);
+    let model = live2d_core::Model::from_moc(&moc);
 
     log::info!("{:?}", model.canvas_info);
     log::info!("{:?}", model.parameters);
@@ -113,43 +125,27 @@ pub mod core_api_tests {
     }
   }
 
-  #[cfg(not(target_arch = "wasm32"))]
-  #[test]
-  fn public_api_use() {
-    impl_public_api_use();
-  }
-
   #[cfg(target_arch = "wasm32")]
-  #[wasm_bindgen_test]
-  fn public_api_use() {
-    impl_public_api_use();
+  macro_rules! if_wasm {
+    ($($code:tt)*) => {
+      $($code)*
+    }
   }
+  #[cfg(not(target_arch = "wasm32"))]
+  macro_rules! if_wasm {
+    ($($code:tt)*) => {};
+  }
+  use if_wasm;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
 macro_rules! if_native {
   ($($code:tt)*) => {
     $($code)*
   }
 }
-
 #[cfg(target_arch = "wasm32")]
-#[macro_export]
 macro_rules! if_native {
   ($($code:tt)*) => {};
 }
-
-#[cfg(target_arch = "wasm32")]
-#[macro_export]
-macro_rules! if_wasm {
-  ($($code:tt)*) => {
-    $($code)*
-  }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
-macro_rules! if_wasm {
-  ($($code:tt)*) => {};
-}
+use if_native;
