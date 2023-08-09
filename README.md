@@ -77,12 +77,12 @@ unsafe {
 
 Rust code (high-level interface):
 ```rust
-use live2d_cubism_core_sys::core;
+use live2d_cubism_core_sys::core as live2d_core;
 
-let cubism_core = core::CubismCore::default();
+let cubism_core = live2d_core::CubismCore::default();
 let moc = cubism_core.moc_from_bytes(moc_bytes).unwrap();
 
-let model = core::Model::from_moc(&moc);
+let model = live2d_core::Model::from_moc(&moc);
 
 {
   let mut dynamic = model.dynamic.write();
