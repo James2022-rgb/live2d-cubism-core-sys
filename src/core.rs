@@ -89,6 +89,7 @@ if_native! {
 }
 
 /// Cubism model.
+#[derive(Debug)]
 pub struct Model {
   pub canvas_info: CanvasInfo,
   pub parameters: Box<[Parameter]>,
@@ -271,9 +272,10 @@ mod platform_impl {
   unsafe impl Sync for PlatformMoc {}
 
   #[allow(dead_code)]
+  #[derive(Debug)]
   pub struct PlatformModel {
     model_storage: AlignedStorage,
-    /// The memory block for the `csmMoc` used to generate this `csmModel`, which need to outlive this `csm_model`.
+    /// The memory block for the `csmMoc` used to generate this `csmModel`, which needs to outlive this `csm_model`.
     moc_storage: Arc<AlignedStorage>,
   }
   impl super::Model {
@@ -582,6 +584,7 @@ mod platform_impl {
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
 
+  #[derive(Debug)]
   pub struct PlatformModel;
   impl super::Model {
     pub fn from_moc(moc: &super::Moc) -> Self {
