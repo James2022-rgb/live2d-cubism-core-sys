@@ -137,28 +137,48 @@ pub struct CanvasInfo {
 
 #[derive(Debug)]
 pub struct Parameter {
-  pub id: String,
-  pub ty: ParameterType,
-  pub value_range: (f32, f32),
-  pub default_value: f32,
-  pub keys: Box<[f32]>,
+  id: String,
+  ty: ParameterType,
+  value_range: (f32, f32),
+  default_value: f32,
+  keys: Box<[f32]>,
+}
+impl Parameter {
+  pub fn id(&self) -> &str { &self.id }
+  pub fn ty(&self) -> ParameterType { self.ty }
+  pub fn value_range(&self) -> (f32, f32) { self.value_range }
+  pub fn default_value(&self) -> f32 { self.default_value }
+  pub fn keys(&self) -> &[f32] { &self.keys }
 }
 
 #[derive(Debug)]
 pub struct Part {
-  pub id: String,
-  pub parent_part_index: Option<usize>,
+  id: String,
+  parent_part_index: Option<usize>,
+}
+impl Part {
+  pub fn id(&self) -> &str { self.id.as_str() }
+  pub fn parent_part_index(&self) -> Option<usize> { self.parent_part_index }
 }
 
 #[derive(Debug)]
 pub struct Drawable {
-  pub id: String,
-  pub constant_flagset: ConstantDrawableFlagSet,
-  pub texture_index: usize,
-  pub masks: Box<[usize]>,
-  pub vertex_uvs: Box<[Vector2]>,
-  pub triangle_indices: Box<[u16]>,
-  pub parent_part_index: Option<usize>,
+  id: String,
+  constant_flagset: ConstantDrawableFlagSet,
+  texture_index: usize,
+  masks: Box<[usize]>,
+  vertex_uvs: Box<[Vector2]>,
+  triangle_indices: Box<[u16]>,
+  parent_part_index: Option<usize>,
+}
+impl Drawable {
+  pub fn id(&self) -> &str { self.id.as_str() }
+  pub fn constant_flagset(&self) -> ConstantDrawableFlagSet { self.constant_flagset }
+  pub fn texture_index(&self) -> usize { self.texture_index }
+  pub fn masks(&self) -> &[usize] { &self.masks }
+  pub fn vertex_uvs(&self) -> &[Vector2] { &self.vertex_uvs }
+  pub fn triangle_indices(&self) -> &[u16] { &self.triangle_indices }
+  pub fn parent_part_index(&self) -> Option<usize> { self.parent_part_index }
 }
 
 /// Dynamic states of a model.
