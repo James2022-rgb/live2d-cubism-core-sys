@@ -89,17 +89,17 @@ pub mod core_api_tests {
     // let moc_bytes = include_bytes!(concat!(ENV_CUBISM_SDK_DIR!(), "/AdditionalSamples/simple/runtime/simple.moc3"));
 
     let moc = cubism_core.moc_from_bytes(moc_bytes).expect("moc_from_bytes should succeed");
-    log::info!("Moc version: {}", moc.version);
+    log::info!("Moc version: {}", moc.version());
 
     let model = live2d_core::Model::from_moc(&moc);
 
-    log::info!("{:?}", model.canvas_info);
-    log::info!("{:?}", model.parameters);
-    log::info!("{:?}", model.parts);
-    log::info!("{:?}", model.drawables);
+    log::info!("{:?}", model.canvas_info());
+    log::info!("{:?}", model.parameters());
+    log::info!("{:?}", model.parts());
+    log::info!("{:?}", model.drawables());
 
     {
-      let dynamic = model.dynamic.read();
+      let dynamic = model.read_dynamic();
 
       log::info!("Parameter values: {:?}", dynamic.parameter_values());
       log::info!("Part opacities: {:?}", dynamic.part_opacities());
@@ -112,14 +112,14 @@ pub mod core_api_tests {
       log::info!("Drawable screen colors: {:?}", dynamic.drawable_screen_colors());
     }
     {
-      let mut dynamic = model.dynamic.write();
+      let mut dynamic = model.write_dynamic();
 
       dynamic.reset_drawable_dynamic_flags();
       dynamic.update();
     }
 
     {
-      let dynamic = model.dynamic.read();
+      let dynamic = model.read_dynamic();
 
       log::info!("Drawable dynamic flags: {:?}", dynamic.drawable_dynamic_flagsets()[0]);
     }

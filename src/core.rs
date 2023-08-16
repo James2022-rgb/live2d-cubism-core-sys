@@ -6,7 +6,7 @@ use shrinkwraprs::Shrinkwrap;
 use derive_more::Display;
 use num_enum::TryFromPrimitive;
 use flagset::{FlagSet, flags};
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub type Vector2 = mint::Vector2<f32>;
 pub type Vector4 = mint::Vector4<f32>;
@@ -68,6 +68,7 @@ pub enum ParameterType {
   Normal = 0,
   BlendShape = 1,
 }
+
 #[derive(Debug, Default)]
 pub struct CubismCore {
   #[allow(dead_code)]
@@ -77,8 +78,11 @@ pub struct CubismCore {
 /// Cubism moc.
 #[derive(Debug)]
 pub struct Moc {
-  pub version: MocVersion,
+  version: MocVersion,
   inner: platform_impl::PlatformMoc,
+}
+impl Moc {
+  pub fn version(&self) -> MocVersion { self.version }
 }
 
 if_native! {
@@ -91,14 +95,33 @@ if_native! {
 /// Cubism model.
 #[derive(Debug)]
 pub struct Model {
-  pub canvas_info: CanvasInfo,
-  pub parameters: Box<[Parameter]>,
-  pub parts: Box<[Part]>,
-  pub drawables: Box<[Drawable]>,
-  pub dynamic: RwLock<ModelDynamic>,
+  canvas_info: CanvasInfo,
+  parameters: Box<[Parameter]>,
+  parts: Box<[Part]>,
+  drawables: Box<[Drawable]>,
+  dynamic: RwLock<ModelDynamic>,
 
   #[allow(unused)]
   inner: platform_impl::PlatformModel,
+}
+impl Model {
+  pub fn canvas_info(&self) -> CanvasInfo { self.canvas_info }
+  pub fn parameters(&self) -> &[Parameter] { &self.parameters }
+  pub fn parts(&self) -> &[Part] { &self.parts }
+  pub fn drawables(&self) -> &[Drawable] { &self.drawables }
+
+  /// Acquires a read (shared) lock for [`ModelDynamic`].
+  pub fn read_dynamic(&self) -> ModelDynamicReadLockGuard {
+    ModelDynamicReadLockGuard {
+      inner: self.dynamic.read(),
+    }
+  }
+  /// Acquires a write (mutable) lock for [`ModelDynamic`].
+  pub fn write_dynamic(&self) -> ModelDynamicWriteLockGuard {
+    ModelDynamicWriteLockGuard {
+      inner: self.dynamic.write(),
+    }
+  }
 }
 
 /// Model canvas.
@@ -142,6 +165,35 @@ pub struct Drawable {
 #[derive(Debug)]
 pub struct ModelDynamic {
   inner: platform_impl::PlatformModelDynamic,
+}
+
+#[derive(Debug)]
+pub struct ModelDynamicReadLockGuard<'a> {
+  inner: RwLockReadGuard<'a, ModelDynamic>,
+}
+impl<'a> std::ops::Deref for ModelDynamicReadLockGuard<'a> {
+  type Target = ModelDynamic;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+#[derive(Debug)]
+pub struct ModelDynamicWriteLockGuard<'a> {
+  inner: RwLockWriteGuard<'a, ModelDynamic>,
+}
+impl<'a> std::ops::Deref for ModelDynamicWriteLockGuard<'a> {
+  type Target = ModelDynamic;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+impl<'a> std::ops::DerefMut for ModelDynamicWriteLockGuard<'a> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.inner
+  }
 }
 
 pub type ConstantDrawableFlagSet = FlagSet<ConstantDrawableFlags>;
