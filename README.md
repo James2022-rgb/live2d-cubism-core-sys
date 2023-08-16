@@ -92,3 +92,16 @@ let model = live2d_core::Model::from_moc(&moc);
 }
 
 ```
+
+Running tests
+----------------------------
+
+Native:
+```shell
+cargo test
+```
+
+Web:
+```shell
+wasm-pack test --chrome
+```
