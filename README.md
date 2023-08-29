@@ -55,9 +55,12 @@ LIVE2D_CUBISM_SDK_WEB_DIR=D:/Development/live2d/CubismSdkForWeb-4-r.5
 Live2D Cubism SDK Core is included in _Live2D Cubism SDK for Native_, or _Web_, downloaded from:
 https://www.live2d.com/en/download/cubism-sdk/
 
-Feature gate
+Optional features
 ----------------------------
-The `core` feature, enabled by default, provides a high-level interface on top of the direct unsafe bindings.
+
+| Feature | Default | Description |
+| ------- | ------- | ----------- |
+| `core`  | Yes     | Provides a high-level interface on top of the direct unsafe bindings. |
 
 Usage
 ----------------------------
