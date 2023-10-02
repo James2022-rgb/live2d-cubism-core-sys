@@ -93,10 +93,14 @@ pub mod core_api_tests {
 
     let model = live2d_core::Model::from_moc(&moc);
 
-    log::info!("{:?}", model.canvas_info());
-    log::info!("{:?}", model.parameters());
-    log::info!("{:?}", model.parts());
-    log::info!("{:?}", model.drawables());
+    {
+      let model_static = model.get_static();
+
+      log::info!("{:?}", model_static.canvas_info());
+      log::info!("{:?}", model_static.parameters());
+      log::info!("{:?}", model_static.parts());
+      log::info!("{:?}", model_static.drawables());
+    }
 
     {
       let dynamic = model.read_dynamic();

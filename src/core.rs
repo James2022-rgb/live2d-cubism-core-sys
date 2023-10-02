@@ -8,6 +8,12 @@ use num_enum::TryFromPrimitive;
 use flagset::{FlagSet, flags};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use platform_iface::{
+  PlatformCubismCoreIface as _,
+  PlatformModelIface as _,
+  PlatformModelDynamicIface as _,
+};
+
 pub type Vector2 = mint::Vector2<f32>;
 pub type Vector4 = mint::Vector4<f32>;
 
@@ -33,11 +39,13 @@ impl CubismVersion {
 }
 impl std::fmt::Display for CubismVersion {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // TODO: Hex?
     write!(f, "{:02}.{:02}.{:04} ({})", self.major(), self.minor(), self.patch(), self.0)
   }
 }
 impl std::fmt::Debug for CubismVersion {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // TODO: Hex?
     write!(f, "{}", self)
   }
 }
@@ -69,25 +77,71 @@ pub enum ParameterType {
   BlendShape = 1,
 }
 
+/// Encapsulates the functionality of _Live2D® Cubism SDK Core_.
 #[derive(Debug, Default)]
 pub struct CubismCore {
   #[allow(dead_code)]
   inner: platform_impl::PlatformCubismCore,
 }
+impl CubismCore {
+  /// Sets a global log handler function to intercept _Live2D® Cubism SDK Core_'s internal log.
+  ///
+  /// ## Safety
+  /// - Causes a slight memory leak (a heap-allocated closure).
+  /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`.
+  ///   This is a precaution since their threading behavior is not well documented.
+  ///
+  /// ## Platform-specific
+  /// - **Android:** Unsupported; `libffi-sys-rs` fails to build for Android on Windows.
+  /// - **Web:** Unsupported.
+  #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+  pub unsafe fn set_log_function<F>(f: F)
+  where
+    F: FnMut(&str) + Send + 'static,
+  {
+    platform_impl::PlatformCubismCore::set_log_function(f)
+  }
+
+  /// Gets the version of _Live2D® Cubism SDK Core_.
+  pub fn version(&self) -> CubismVersion {
+    self.inner.version()
+  }
+  /// Gets the latest moc3 version supported by _Live2D® Cubism SDK Core_.
+  pub fn latest_supported_moc_version(&self) -> MocVersion {
+    self.inner.latest_supported_moc_version()
+  }
+
+  /// Deserializes a `Moc` from bytes.
+  pub fn moc_from_bytes(&self, bytes: &[u8]) -> Result<Moc, MocError> {
+    self.inner
+      .platform_moc_from_bytes(bytes)
+      .map(|(moc_version, platform_moc)| {
+        Moc {
+          version: moc_version,
+          inner: platform_moc
+        }
+      })
+  }
+}
 
 /// Cubism moc.
 #[derive(Debug)]
 pub struct Moc {
+  // TODO: Incorporate into `PlatformMoc`?
+  // TODO: Rename `inner`?
   version: MocVersion,
   inner: platform_impl::PlatformMoc,
 }
 impl Moc {
-  pub fn version(&self) -> MocVersion { self.version }
+  pub fn version(&self) -> MocVersion {
+    self.version
+  }
 }
 
 if_native! {
   use static_assertions::assert_impl_all;
 
+  // TODO: Assert `Send` and `Sync` for `CubismCore`?
   assert_impl_all!(Moc: Send, Sync);
   assert_impl_all!(Model: Send, Sync);
 }
@@ -95,20 +149,28 @@ if_native! {
 /// Cubism model.
 #[derive(Debug)]
 pub struct Model {
-  canvas_info: CanvasInfo,
-  parameters: Box<[Parameter]>,
-  parts: Box<[Part]>,
-  drawables: Box<[Drawable]>,
+  model_static: ModelStatic,
   dynamic: RwLock<ModelDynamic>,
 
   #[allow(unused)]
   inner: platform_impl::PlatformModel,
 }
 impl Model {
-  pub fn canvas_info(&self) -> CanvasInfo { self.canvas_info }
-  pub fn parameters(&self) -> &[Parameter] { &self.parameters }
-  pub fn parts(&self) -> &[Part] { &self.parts }
-  pub fn drawables(&self) -> &[Drawable] { &self.drawables }
+  pub fn from_moc(moc: &Moc) -> Self {
+    let (model_static, dynamic, inner) = platform_impl::PlatformModel::from_platform_moc(&moc.inner);
+
+    Self {
+      model_static,
+      dynamic: RwLock::new(dynamic),
+
+      inner,
+    }
+  }
+
+  /// Gets [`ModelStatic`].
+  pub fn get_static(&self) -> &ModelStatic {
+    &self.model_static
+  }
 
   /// Acquires a read (shared) lock for [`ModelDynamic`].
   pub fn read_dynamic(&self) -> ModelDynamicReadLockGuard {
@@ -122,6 +184,21 @@ impl Model {
       inner: self.dynamic.write(),
     }
   }
+}
+
+/// Static properties of a model.
+#[derive(Debug)]
+pub struct ModelStatic {
+  canvas_info: CanvasInfo,
+  parameters: Box<[Parameter]>,
+  parts: Box<[Part]>,
+  drawables: Box<[Drawable]>,
+}
+impl ModelStatic {
+  pub fn canvas_info(&self) -> CanvasInfo { self.canvas_info }
+  pub fn parameters(&self) -> &[Parameter] { &self.parameters }
+  pub fn parts(&self) -> &[Part] { &self.parts }
+  pub fn drawables(&self) -> &[Drawable] { &self.drawables }
 }
 
 /// Model canvas.
@@ -186,6 +263,28 @@ impl Drawable {
 pub struct ModelDynamic {
   inner: platform_impl::PlatformModelDynamic,
 }
+impl ModelDynamic {
+  pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values() }
+  pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.parameter_values_mut() }
+  pub fn part_opacities(&self) -> &[f32] { self.inner.part_opacities() }
+  pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opacities_mut() }
+  pub fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets() }
+  pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets_mut() }
+
+  pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.drawable_draw_orders() }
+  pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders() }
+  pub fn drawable_opacities(&self) -> &[f32] { self.inner.drawable_opacities() }
+  pub fn drawable_vertex_position_containers(&self) -> &[&[Vector2]] { self.inner.drawable_vertex_position_containers() }
+  pub fn drawable_multiply_colors(&self) -> &[Vector4] { self.inner.drawable_multiply_colors() }
+  pub fn drawable_screen_colors(&self) -> &[Vector4] { self.inner.drawable_screen_colors() }
+
+  pub fn update(&mut self) {
+    self.inner.update()
+  }
+  pub fn reset_drawable_dynamic_flags(&mut self) {
+    self.inner.reset_drawable_dynamic_flags()
+  }
+}
 
 #[derive(Debug)]
 pub struct ModelDynamicReadLockGuard<'a> {
@@ -243,16 +342,68 @@ flags! {
 assert_eq_align!(DynamicDrawableFlagSet, u8);
 assert_eq_size!(DynamicDrawableFlagSet, u8);
 
+//
+// Internal
+//
+
+mod platform_iface {
+  pub use super::{MocError, CubismVersion, MocVersion};
+  pub use super::{Vector2, Vector4, ModelStatic, ModelDynamic, DynamicDrawableFlagSet};
+
+  pub trait PlatformCubismCoreIface {
+    type PlatformMoc;
+
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+    unsafe fn set_log_function<F>(f: F)
+    where
+      F: FnMut(&str) + Send + 'static;
+
+    fn version(&self) -> CubismVersion;
+    fn latest_supported_moc_version(&self) -> MocVersion;
+
+    fn platform_moc_from_bytes(&self, bytes: &[u8]) -> Result<(MocVersion, Self::PlatformMoc), MocError>;
+  }
+
+  // TODO: A `PlatformMocIface` ?
+
+  pub trait PlatformModelIface {
+    type PlatformMoc;
+
+    fn from_platform_moc(platform_moc: &Self::PlatformMoc) -> (ModelStatic, ModelDynamic, Self);
+  }
+
+  pub trait PlatformModelDynamicIface {
+    fn parameter_values(&self) -> &[f32];
+    fn parameter_values_mut(&mut self) -> &mut [f32];
+    fn part_opacities(&self) -> &[f32];
+    fn part_opacities_mut(&mut self) -> &mut [f32];
+    fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet];
+    fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet];
+
+    fn drawable_draw_orders(&self) -> &[i32];
+    fn drawable_render_orders(&self) -> &[i32];
+    fn drawable_opacities(&self) -> &[f32];
+    fn drawable_vertex_position_containers(&self) -> &[&[Vector2]];
+    fn drawable_multiply_colors(&self) -> &[Vector4];
+    fn drawable_screen_colors(&self) -> &[Vector4];
+
+    fn update(&mut self);
+    fn reset_drawable_dynamic_flags(&mut self);
+  }
+}
+
+
 #[cfg(not(target_arch = "wasm32"))]
 mod platform_impl {
   use std::sync::Arc;
 
   use static_assertions::{assert_eq_align, assert_eq_size};
-  use parking_lot::RwLock;
 
   use crate::memory::AlignedStorage;
 
   use crate::sys::*;
+
+  use super::platform_iface;
 
   assert_eq_align!(super::Vector2, csmVector2);
   assert_eq_size!(super::Vector2, csmVector2);
@@ -261,19 +412,10 @@ mod platform_impl {
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore;
-  impl super::CubismCore {
-    /// Sets a global log handler function to intercept _Live2D® Cubism SDK Core_'s internal log.
-    ///
-    /// ## Safety
-    /// - Causes a slight memory leak (a heap-allocated closure).
-    /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`.
-    ///   This is a precaution since their threading behavior is not well documented.
-    ///
-    /// ## Platform-specific
-    /// - **Android:** Unsupported; `libffi-sys-rs` fails to build for Android on Windows.
-    /// - **Web:** Unsupported.
-    #[cfg(not(target_os = "android"))]
-    pub unsafe fn set_log_function<F>(mut f: F)
+  impl platform_iface::PlatformCubismCoreIface for PlatformCubismCore {
+    type PlatformMoc = PlatformMoc;
+
+    unsafe fn set_log_function<F>(mut f: F)
     where
       F: FnMut(&str) + Send + 'static,
     {
@@ -293,14 +435,14 @@ mod platform_impl {
       std::mem::forget(trampoline);
     }
 
-    pub fn version(&self) -> super::CubismVersion {
+    fn version(&self) -> super::CubismVersion {
       super::CubismVersion(unsafe { csmGetVersion() })
     }
-    pub fn latest_supported_moc_version(&self) -> super::MocVersion {
+    fn latest_supported_moc_version(&self) -> super::MocVersion {
       unsafe { csmGetLatestMocVersion() }.try_into().unwrap()
     }
 
-    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Result<super::Moc, super::MocError> {
+    fn platform_moc_from_bytes(&self, bytes: &[u8]) -> Result<(super::MocVersion, self::PlatformMoc), super::MocError> {
       const MOC_ALIGNMENT: usize = csmAlignofMoc as usize;
 
       let mut aligned_storage = AlignedStorage::new(bytes.len(), MOC_ALIGNMENT).unwrap();
@@ -321,13 +463,13 @@ mod platform_impl {
         csmReviveMocInPlace(aligned_storage.as_mut_ptr() as *mut _, size_in_u32)
       };
 
-      Ok(super::Moc {
-        version: moc_version,
-        inner: PlatformMoc {
+      Ok(
+        (moc_version,
+        PlatformMoc {
           csm_moc,
           moc_storage: Arc::new(aligned_storage),
-        },
-      })
+        })
+      )
     }
   }
 
@@ -347,21 +489,23 @@ mod platform_impl {
   #[derive(Debug)]
   pub struct PlatformModel {
     model_storage: AlignedStorage,
-    /// The memory block for the `csmMoc` used to generate this `csmModel`, which needs to outlive this `csm_model`.
+    /// The memory block for the `csmMoc` used to generate this `csmModel`, which needs to outlive this `PlatformModel`.
     moc_storage: Arc<AlignedStorage>,
   }
-  impl super::Model {
-    pub fn from_moc(moc: &super::Moc) -> Self {
+  impl platform_iface::PlatformModelIface for PlatformModel {
+    type PlatformMoc = PlatformMoc;
+
+    fn from_platform_moc(platform_moc: &Self::PlatformMoc) -> (super::ModelStatic, super::ModelDynamic, Self) {
       const MODEL_ALIGNMENT: usize = csmAlignofModel as usize;
 
       let storage_size = unsafe {
-        csmGetSizeofModel(moc.inner.csm_moc)
+        csmGetSizeofModel(platform_moc.csm_moc)
       };
 
       let mut aligned_storage = AlignedStorage::new(storage_size as _, MODEL_ALIGNMENT).unwrap();
 
       let csm_model = unsafe {
-        csmInitializeModelInPlace(moc.inner.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
+        csmInitializeModelInPlace(platform_moc.csm_moc, aligned_storage.as_mut_ptr() as *mut _, storage_size)
       };
 
       let canvas_info = unsafe {
@@ -379,23 +523,23 @@ mod platform_impl {
       };
 
       let parameters: Box<[_]> = unsafe {
-        let count = csmGetParameterCount(csm_model);
+        let count: usize = csmGetParameterCount(csm_model).try_into().unwrap();
 
-        let ids: Vec<_> = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count as _).iter()
+        let ids: Vec<_> = std::slice::from_raw_parts(csmGetParameterIds(csm_model), count).iter()
           .map(|&c_str_ptr| to_string(c_str_ptr))
           .collect();
 
-        let types: Vec<_> = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count as _).iter()
+        let types: Vec<_> = std::slice::from_raw_parts(csmGetParameterTypes(csm_model), count).iter()
           .map(|value| super::ParameterType::try_from(*value).unwrap())
           .collect();
 
-        let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count as _);
-        let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count as _);
-        let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count as _);
+        let minimum_values = std::slice::from_raw_parts(csmGetParameterMinimumValues(csm_model), count);
+        let maximum_values = std::slice::from_raw_parts(csmGetParameterMaximumValues(csm_model), count);
+        let default_values = std::slice::from_raw_parts(csmGetParameterDefaultValues(csm_model), count);
 
         let key_value_containers: Box<[_]> = {
-          let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count as _);
-          let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count as _);
+          let key_counts = std::slice::from_raw_parts(csmGetParameterKeyCounts(csm_model), count);
+          let key_value_ptrs = std::slice::from_raw_parts(csmGetParameterKeyValues(csm_model), count);
 
           itertools::izip!(key_counts, key_value_ptrs)
             .map(|(&key_count, &key_value_ptr)| {
@@ -523,20 +667,19 @@ mod platform_impl {
         }
       };
 
-      let inner = PlatformModel {
-        model_storage: aligned_storage,
-        moc_storage: Arc::clone(&moc.inner.moc_storage),
-      };
-
-      Self {
+      let model_static = super::ModelStatic {
         canvas_info,
         parameters,
         parts,
         drawables,
-        dynamic: RwLock::new(dynamic),
+      };
 
-        inner,
-      }
+      let inner = PlatformModel {
+        model_storage: aligned_storage,
+        moc_storage: Arc::clone(&platform_moc.moc_storage),
+      };
+
+      (model_static, dynamic, inner)
     }
   }
 
@@ -558,32 +701,55 @@ mod platform_impl {
   unsafe impl Send for PlatformModelDynamic {}
   unsafe impl Sync for PlatformModelDynamic {}
 
-  impl super::ModelDynamic {
-    pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values }
-    pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.parameter_values }
-    pub fn part_opacities(&self) -> &[f32] { self.inner.part_opactities }
-    pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opactities }
-    pub fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
-    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets }
-    pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.drawable_draw_orders }
-    pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders }
-    pub fn drawable_opacities(&self) -> &[f32] { self.inner.drawable_opacities }
-    pub fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] {
-      &self.inner.vertex_position_containers.inner
+  impl platform_iface::PlatformModelDynamicIface for PlatformModelDynamic {
+    fn parameter_values(&self) -> &[f32] {
+      self.parameter_values
     }
-    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { self.inner.drawable_multiply_colors }
-    pub fn drawable_screen_colors(&self) -> &[super::Vector4] { self.inner.drawable_screen_colors }
+    fn parameter_values_mut(&mut self) -> &mut [f32] {
+      self.parameter_values
+    }
+    fn part_opacities(&self) -> &[f32] {
+      self.part_opactities
+    }
+    fn part_opacities_mut(&mut self) -> &mut [f32] {
+      self.part_opactities
+    }
+    fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] {
+      self.drawable_dynamic_flagsets
+    }
+    fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] {
+      self.drawable_dynamic_flagsets
+    }
 
-    pub fn update(&mut self) {
+    fn drawable_draw_orders(&self) -> &[i32] {
+      self.drawable_draw_orders
+    }
+    fn drawable_render_orders(&self) -> &[i32] {
+      self.drawable_render_orders
+    }
+    fn drawable_opacities(&self) -> &[f32] {
+      self.drawable_opacities
+    }
+    fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] {
+      &self.vertex_position_containers.inner
+    }
+    fn drawable_multiply_colors(&self) -> &[super::Vector4] {
+      self.drawable_multiply_colors
+    }
+    fn drawable_screen_colors(&self) -> &[super::Vector4] {
+      self.drawable_screen_colors
+    }
+
+    fn update(&mut self) {
       unsafe {
-        csmUpdateModel(self.inner.csm_model);
+        csmUpdateModel(self.csm_model);
       }
 
-      self.inner.vertex_position_containers = VertexPositionContainers::new(self.inner.csm_model);
+      self.vertex_position_containers = VertexPositionContainers::new(self.csm_model);
     }
-    pub fn reset_drawable_dynamic_flags(&mut self) {
+    fn reset_drawable_dynamic_flags(&mut self) {
       unsafe {
-        csmResetDrawableDynamicFlags(self.inner.csm_model);
+        csmResetDrawableDynamicFlags(self.csm_model);
       }
     }
   }
@@ -620,31 +786,36 @@ mod platform_impl {
 mod platform_impl {
   use std::sync::Arc;
 
-  use parking_lot::RwLock;
   use js::*;
+
+  use super::platform_iface;
 
   #[derive(Debug, Default)]
   pub struct PlatformCubismCore {
     js_cubism_core: Arc<JsLive2DCubismCore>,
   }
-  impl super::CubismCore {
-    pub fn version(&self) -> super::CubismVersion { self.inner.js_cubism_core.cubism_version }
-    pub fn latest_supported_moc_version(&self) -> super::MocVersion { self.inner.js_cubism_core.latest_supported_moc_version }
+  impl platform_iface::PlatformCubismCoreIface for PlatformCubismCore {
+    type PlatformMoc = PlatformMoc;
 
-    pub fn moc_from_bytes(&self, bytes: &[u8]) -> Result<super::Moc, super::MocError> {
+    fn version(&self) -> super::CubismVersion {
+      self.js_cubism_core.cubism_version
+    }
+    fn latest_supported_moc_version(&self) -> super::MocVersion {
+      self.js_cubism_core.latest_supported_moc_version
+    }
+
+    fn platform_moc_from_bytes(&self, bytes: &[u8]) -> Result<(super::MocVersion, self::PlatformMoc), super::MocError> {
       let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
       array.copy_from(bytes);
 
-      let js_moc = self.inner.js_cubism_core.moc_from_js_array_buffer(array.buffer());
+      let js_moc = self.js_cubism_core.moc_from_js_array_buffer(array.buffer());
       js_moc
         .map(|js_moc| {
-          super::Moc {
-            version: js_moc.version,
-            inner: PlatformMoc {
-              js_moc,
-              js_cubism_core: Arc::clone(&self.inner.js_cubism_core),
-            },
-          }
+          (js_moc.version,
+          PlatformMoc {
+            js_moc,
+            js_cubism_core: Arc::clone(&self.js_cubism_core),
+          })
         })
         .ok_or(super::MocError::InvalidMoc)
     }
@@ -658,14 +829,23 @@ mod platform_impl {
 
   #[derive(Debug)]
   pub struct PlatformModel;
-  impl super::Model {
-    pub fn from_moc(moc: &super::Moc) -> Self {
-      let js_model = moc.inner.js_cubism_core.model_from_moc(&moc.inner.js_moc);
+  impl platform_iface::PlatformModelIface for PlatformModel {
+    type PlatformMoc = PlatformMoc;
+
+    fn from_platform_moc(platform_moc: &Self::PlatformMoc) -> (super::ModelStatic, super::ModelDynamic, Self) {
+      let js_model = platform_moc.js_cubism_core.model_from_moc(&platform_moc.js_moc);
 
       let canvas_info = js_model.canvas_info;
       let parameters = js_model.parameters.to_aos().into_boxed_slice();
       let parts = js_model.parts.to_aos().into_boxed_slice();
       let drawables = js_model.drawables.to_aos().into_boxed_slice();
+
+      let model_static = super::ModelStatic {
+        canvas_info,
+        parameters,
+        parts,
+        drawables,
+      };
 
       let dynamic = super::ModelDynamic {
         inner: PlatformModelDynamic {
@@ -673,15 +853,7 @@ mod platform_impl {
         }
       };
 
-      Self {
-        canvas_info,
-        parameters,
-        parts,
-        drawables,
-        dynamic: RwLock::new(dynamic),
-
-        inner: PlatformModel,
-      }
+      (model_static, dynamic, PlatformModel)
     }
   }
 
@@ -689,26 +861,50 @@ mod platform_impl {
   pub struct PlatformModelDynamic {
     js_model: JsModel,
   }
-
-  impl super::ModelDynamic {
-    pub fn parameter_values(&self) -> &[f32] { self.inner.js_model.scratch.parameter_values() }
-    pub fn parameter_values_mut(&mut self) -> &mut [f32] { self.inner.js_model.scratch.parameter_values_mut() }
-    pub fn part_opacities(&self) -> &[f32] { self.inner.js_model.scratch.part_opacities() }
-    pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.js_model.scratch.part_opacities_mut() }
-    pub fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] { self.inner.js_model.scratch.drawable_dynamic_flagsets() }
-    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] { self.inner.js_model.scratch.drawable_dynamic_flagsets_mut() }
-    pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.js_model.scratch.drawable_draw_orders() }
-    pub fn drawable_render_orders(&self) -> &[i32] { self.inner.js_model.scratch.drawable_render_orders() }
-    pub fn drawable_opacities(&self) -> &[f32] { self.inner.js_model.scratch.drawable_opacities() }
-    pub fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] { self.inner.js_model.scratch.drawable_vertex_position_containers() }
-    pub fn drawable_multiply_colors(&self) -> &[super::Vector4] { self.inner.js_model.scratch.drawable_multiply_colors() }
-    pub fn drawable_screen_colors(&self) -> &[super::Vector4] { self.inner.js_model.scratch.drawable_screen_colors()}
-
-    pub fn update(&mut self) {
-      self.inner.js_model.update();
+  impl platform_iface::PlatformModelDynamicIface for PlatformModelDynamic {
+    fn parameter_values(&self) -> &[f32] {
+      self.js_model.scratch.parameter_values()
     }
-    pub fn reset_drawable_dynamic_flags(&mut self) {
-      self.inner.js_model.reset_drawable_dynamic_flags();
+    fn parameter_values_mut(&mut self) -> &mut [f32] {
+      self.js_model.scratch.parameter_values_mut()
+    }
+    fn part_opacities(&self) -> &[f32] {
+      self.js_model.scratch.part_opacities()
+    }
+    fn part_opacities_mut(&mut self) -> &mut [f32] {
+      self.js_model.scratch.part_opacities_mut()
+    }
+    fn drawable_dynamic_flagsets(&self) -> &[super::DynamicDrawableFlagSet] {
+      self.js_model.scratch.drawable_dynamic_flagsets()
+    }
+    fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [super::DynamicDrawableFlagSet] {
+      self.js_model.scratch.drawable_dynamic_flagsets_mut()
+    }
+
+    fn drawable_draw_orders(&self) -> &[i32] {
+      self.js_model.scratch.drawable_draw_orders()
+    }
+    fn drawable_render_orders(&self) -> &[i32] {
+      self.js_model.scratch.drawable_render_orders()
+    }
+    fn drawable_opacities(&self) -> &[f32] {
+      self.js_model.scratch.drawable_opacities()
+    }
+    fn drawable_vertex_position_containers(&self) -> &[&[super::Vector2]] {
+      self.js_model.scratch.drawable_vertex_position_containers()
+    }
+    fn drawable_multiply_colors(&self) -> &[super::Vector4] {
+      self.js_model.scratch.drawable_multiply_colors()
+    }
+    fn drawable_screen_colors(&self) -> &[super::Vector4] {
+      self.js_model.scratch.drawable_screen_colors()
+    }
+
+    fn update(&mut self) {
+      self.js_model.update()
+    }
+    fn reset_drawable_dynamic_flags(&mut self) {
+      self.js_model.reset_drawable_dynamic_flags()
     }
   }
 
