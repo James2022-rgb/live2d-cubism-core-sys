@@ -288,7 +288,7 @@ impl PlatformMocInterface for PlatformMoc {
     let platform_model_dynamic = PlatformModelDynamic {
       parameter_values: unsafe { std::slice::from_raw_parts_mut(csmGetParameterValues(csm_model), parameter_count) },
       part_opactities: unsafe { std::slice::from_raw_parts_mut(csmGetPartOpacities(csm_model), part_count) },
-      drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts_mut(csmGetDrawableDynamicFlags(csm_model) as *mut _, drawable_count) },
+      drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts(csmGetDrawableDynamicFlags(csm_model) as *const _, drawable_count) },
       drawable_draw_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableDrawOrders(csm_model), drawable_count) },
       drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawable_count) },
       drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawable_count) },
@@ -348,8 +348,7 @@ impl PlatformModelStaticInterface for PlatformModelStatic {
 pub struct PlatformModelDynamic {
   parameter_values: &'static mut [f32],
   part_opactities: &'static mut [f32],
-  // TODO: This shouldn't be mut?
-  drawable_dynamic_flagsets: &'static mut [DynamicDrawableFlagSet],
+  drawable_dynamic_flagsets: &'static [DynamicDrawableFlagSet],
   drawable_draw_orders: &'static [i32],
   drawable_render_orders: &'static [i32],
   drawable_opacities: &'static [f32],
@@ -378,13 +377,10 @@ impl PlatformModelDynamicInterface for PlatformModelDynamic {
   fn part_opacities_mut(&mut self) -> &mut [f32] {
     self.part_opactities
   }
+
   fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet] {
     self.drawable_dynamic_flagsets
   }
-  fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet] {
-    self.drawable_dynamic_flagsets
-  }
-
   fn drawable_draw_orders(&self) -> &[i32] {
     self.drawable_draw_orders
   }

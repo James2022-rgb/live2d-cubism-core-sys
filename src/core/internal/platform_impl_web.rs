@@ -113,13 +113,10 @@ impl PlatformModelDynamicInterface for PlatformModelDynamic {
   fn part_opacities_mut(&mut self) -> &mut [f32] {
     self.js_model.scratch.part_opacities_mut()
   }
+
   fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet] {
     self.js_model.scratch.drawable_dynamic_flagsets()
   }
-  fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet] {
-    self.js_model.scratch.drawable_dynamic_flagsets_mut()
-  }
-
   fn drawable_draw_orders(&self) -> &[i32] {
     self.js_model.scratch.drawable_draw_orders()
   }
@@ -609,8 +606,8 @@ mod js {
     pub fn parameter_values_mut(&mut self) -> &mut [f32] { &mut self.parameter_values }
     pub fn part_opacities(&self) -> &[f32] { &self.part_opacities }
     pub fn part_opacities_mut(&mut self) -> &mut [f32] { &mut self.part_opacities }
+
     pub fn drawable_dynamic_flagsets(&self) -> &[core::DynamicDrawableFlagSet] { &self.drawable_dynamic_flagsets }
-    pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [core::DynamicDrawableFlagSet] { &mut self.drawable_dynamic_flagsets }
     pub fn drawable_draw_orders(&self) -> &[i32] { &self.drawable_draw_orders }
     pub fn drawable_render_orders(&self) -> & [i32] { &self.drawable_render_orders }
     pub fn drawable_opacities(&self) -> &[f32] { &self.drawable_opacities }

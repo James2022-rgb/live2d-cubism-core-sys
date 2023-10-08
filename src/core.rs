@@ -158,7 +158,6 @@ impl ModelDynamic {
   pub fn part_opacities(&self) -> &[f32] { self.inner.part_opacities() }
   pub fn part_opacities_mut(&mut self) -> &mut [f32] { self.inner.part_opacities_mut() }
   pub fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets() }
-  pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet] { self.inner.drawable_dynamic_flagsets_mut() }
 
   pub fn drawable_draw_orders(&self) -> &[i32] { self.inner.drawable_draw_orders() }
   pub fn drawable_render_orders(&self) -> &[i32] { self.inner.drawable_render_orders() }

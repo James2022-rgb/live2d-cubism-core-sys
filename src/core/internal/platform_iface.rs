@@ -39,9 +39,8 @@ pub trait PlatformModelDynamicInterface {
   fn parameter_values_mut(&mut self) -> &mut [f32];
   fn part_opacities(&self) -> &[f32];
   fn part_opacities_mut(&mut self) -> &mut [f32];
-  fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet];
-  fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet];
 
+  fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet];
   fn drawable_draw_orders(&self) -> &[i32];
   fn drawable_render_orders(&self) -> &[i32];
   fn drawable_opacities(&self) -> &[f32];
