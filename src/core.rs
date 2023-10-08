@@ -1,87 +1,42 @@
 #![cfg(feature = "core")]
 
-use static_assertions::{assert_eq_align, assert_eq_size};
-use thiserror::Error;
-use shrinkwraprs::Shrinkwrap;
-use derive_more::Display;
-use num_enum::TryFromPrimitive;
-use flagset::{FlagSet, flags};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use platform_iface::{
-  PlatformCubismCoreIface as _,
-  PlatformModelIface as _,
-  PlatformModelDynamicIface as _,
+pub mod base_types;
+pub mod model_types;
+
+pub use base_types::{Vector2, Vector4};
+pub use base_types::{MocError, CubismVersion, MocVersion};
+
+pub use model_types::CanvasInfo;
+pub use model_types::{ParameterType, Parameter};
+pub use model_types::Part;
+pub use model_types::{ConstantDrawableFlags, ConstantDrawableFlagSet, DynamicDrawableFlags, DynamicDrawableFlagSet, Drawable};
+
+mod internal;
+
+use internal::platform_impl::{PlatformCubismCore, PlatformMoc, PlatformModelStatic, PlatformModelDynamic};
+
+if_native! {
+  use static_assertions::assert_impl_all;
+
+  // TODO: Assert `Send` and `Sync` for `CubismCore`?
+  assert_impl_all!(Moc: Send, Sync);
+  assert_impl_all!(Model: Send, Sync);
+}
+
+use internal::platform_iface::{
+  PlatformCubismCoreInterface as _,
+  PlatformMocInterface as _,
+  PlatformModelStaticInterface as _,
+  PlatformModelDynamicInterface as _,
 };
-
-pub type Vector2 = mint::Vector2<f32>;
-pub type Vector4 = mint::Vector4<f32>;
-
-#[derive(Debug, Clone, Error)]
-pub enum MocError {
-  #[error("Not a valid moc file.")]
-  InvalidMoc,
-  /// ## Platform-specific
-  /// - **Web:** Unsupported.
-  #[error("Unsupported moc version. given: \"{given}\" latest supported:\"{latest_supported}\"")]
-  UnsupportedMocVersion { given: MocVersion, latest_supported: MocVersion },
-}
-
-/// Cubism version identifier.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
-#[repr(transparent)]
-pub struct CubismVersion(pub u32);
-impl CubismVersion {
-  pub fn raw(&self) -> u32 { self.0 }
-  pub fn major(&self) -> u32 { (self.0 & 0xFF000000) >> 24 }
-  pub fn minor(&self) -> u32 { (self.0 & 0x00FF0000) >> 16 }
-  pub fn patch(&self) -> u32 { self.0 & 0x0000FFFF }
-}
-impl std::fmt::Display for CubismVersion {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // TODO: Hex?
-    write!(f, "{:02}.{:02}.{:04} ({})", self.major(), self.minor(), self.patch(), self.0)
-  }
-}
-impl std::fmt::Debug for CubismVersion {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // TODO: Hex?
-    write!(f, "{}", self)
-  }
-}
-
-/// moc3 file format version.
-/// Note that there is no equivalent of `csmMocVersion_Unknown`.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
-#[repr(u32)]
-pub enum MocVersion {
-  /// moc3 file version 3.0.00 - 3.2.07
-  #[display(fmt = "30(3.0.00 - 3.2.07)")]
-  Moc3_30 = 1,
-  /// moc3 file version 3.3.00 - 3.3.03
-  #[display(fmt = "33(3.3.00 - 3.3.03)")]
-  Moc3_33 = 2,
-  /// moc3 file version 4.0.00 - 4.1.05
-  #[display(fmt = "33(4.0.00 - 4.1.05)")]
-  Moc3_40 = 3,
-  /// moc3 file version 4.2.00 -
-  #[display(fmt = "33(4.2.00 -)")]
-  Moc3_42 = 4,
-}
-
-/// Parameter type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
-#[repr(i32)]
-pub enum ParameterType {
-  Normal = 0,
-  BlendShape = 1,
-}
 
 /// Encapsulates the functionality of _Live2D® Cubism SDK Core_.
 #[derive(Debug, Default)]
 pub struct CubismCore {
   #[allow(dead_code)]
-  inner: platform_impl::PlatformCubismCore,
+  inner: PlatformCubismCore,
 }
 impl CubismCore {
   /// Sets a global log handler function to intercept _Live2D® Cubism SDK Core_'s internal log.
@@ -99,7 +54,7 @@ impl CubismCore {
   where
     F: FnMut(&str) + Send + 'static,
   {
-    platform_impl::PlatformCubismCore::set_log_function(f)
+    PlatformCubismCore::set_log_function(f)
   }
 
   /// Gets the version of _Live2D® Cubism SDK Core_.
@@ -127,10 +82,10 @@ impl CubismCore {
 /// Cubism moc.
 #[derive(Debug)]
 pub struct Moc {
-  // TODO: Incorporate into `PlatformMoc`?
+  // TODO: Incorporate `version` into `PlatformMoc`?
   // TODO: Rename `inner`?
   version: MocVersion,
-  inner: platform_impl::PlatformMoc,
+  inner: PlatformMoc,
 }
 impl Moc {
   pub fn version(&self) -> MocVersion {
@@ -138,32 +93,26 @@ impl Moc {
   }
 }
 
-if_native! {
-  use static_assertions::assert_impl_all;
-
-  // TODO: Assert `Send` and `Sync` for `CubismCore`?
-  assert_impl_all!(Moc: Send, Sync);
-  assert_impl_all!(Model: Send, Sync);
-}
-
 /// Cubism model.
 #[derive(Debug)]
 pub struct Model {
   model_static: ModelStatic,
-  dynamic: RwLock<ModelDynamic>,
-
-  #[allow(unused)]
-  inner: platform_impl::PlatformModel,
+  model_dynamic: RwLock<ModelDynamic>,
 }
 impl Model {
   pub fn from_moc(moc: &Moc) -> Self {
-    let (model_static, dynamic, inner) = platform_impl::PlatformModel::from_platform_moc(&moc.inner);
+    let (platform_model_static, platform_model_dynamic) = moc.inner.new_platform_model();
+
+    let model_static = ModelStatic {
+      inner: platform_model_static,
+    };
+    let model_dynamic = ModelDynamic {
+      inner: platform_model_dynamic,
+    };
 
     Self {
       model_static,
-      dynamic: RwLock::new(dynamic),
-
-      inner,
+      model_dynamic: RwLock::new(model_dynamic),
     }
   }
 
@@ -175,13 +124,13 @@ impl Model {
   /// Acquires a read (shared) lock for [`ModelDynamic`].
   pub fn read_dynamic(&self) -> ModelDynamicReadLockGuard {
     ModelDynamicReadLockGuard {
-      inner: self.dynamic.read(),
+      inner: self.model_dynamic.read(),
     }
   }
   /// Acquires a write (mutable) lock for [`ModelDynamic`].
   pub fn write_dynamic(&self) -> ModelDynamicWriteLockGuard {
     ModelDynamicWriteLockGuard {
-      inner: self.dynamic.write(),
+      inner: self.model_dynamic.write(),
     }
   }
 }
@@ -189,79 +138,19 @@ impl Model {
 /// Static properties of a model.
 #[derive(Debug)]
 pub struct ModelStatic {
-  canvas_info: CanvasInfo,
-  parameters: Box<[Parameter]>,
-  parts: Box<[Part]>,
-  drawables: Box<[Drawable]>,
+  inner: PlatformModelStatic,
 }
 impl ModelStatic {
-  pub fn canvas_info(&self) -> CanvasInfo { self.canvas_info }
-  pub fn parameters(&self) -> &[Parameter] { &self.parameters }
-  pub fn parts(&self) -> &[Part] { &self.parts }
-  pub fn drawables(&self) -> &[Drawable] { &self.drawables }
-}
-
-/// Model canvas.
-#[derive(Debug, Clone, Copy)]
-pub struct CanvasInfo {
-  /// Canvas dimensions.
-  pub size_in_pixels: (f32, f32),
-  /// Origin of model on canvas.
-  pub origin_in_pixels: (f32, f32),
-  /// Aspect used for scaling pixels to units.
-  pub pixels_per_unit: f32,
-}
-
-#[derive(Debug)]
-pub struct Parameter {
-  id: String,
-  ty: ParameterType,
-  value_range: (f32, f32),
-  default_value: f32,
-  keys: Box<[f32]>,
-}
-impl Parameter {
-  pub fn id(&self) -> &str { &self.id }
-  pub fn ty(&self) -> ParameterType { self.ty }
-  pub fn value_range(&self) -> (f32, f32) { self.value_range }
-  pub fn default_value(&self) -> f32 { self.default_value }
-  pub fn keys(&self) -> &[f32] { &self.keys }
-}
-
-#[derive(Debug)]
-pub struct Part {
-  id: String,
-  parent_part_index: Option<usize>,
-}
-impl Part {
-  pub fn id(&self) -> &str { self.id.as_str() }
-  pub fn parent_part_index(&self) -> Option<usize> { self.parent_part_index }
-}
-
-#[derive(Debug)]
-pub struct Drawable {
-  id: String,
-  constant_flagset: ConstantDrawableFlagSet,
-  texture_index: usize,
-  masks: Box<[usize]>,
-  vertex_uvs: Box<[Vector2]>,
-  triangle_indices: Box<[u16]>,
-  parent_part_index: Option<usize>,
-}
-impl Drawable {
-  pub fn id(&self) -> &str { self.id.as_str() }
-  pub fn constant_flagset(&self) -> ConstantDrawableFlagSet { self.constant_flagset }
-  pub fn texture_index(&self) -> usize { self.texture_index }
-  pub fn masks(&self) -> &[usize] { &self.masks }
-  pub fn vertex_uvs(&self) -> &[Vector2] { &self.vertex_uvs }
-  pub fn triangle_indices(&self) -> &[u16] { &self.triangle_indices }
-  pub fn parent_part_index(&self) -> Option<usize> { self.parent_part_index }
+  pub fn canvas_info(&self) -> CanvasInfo { self.inner.canvas_info() }
+  pub fn parameters(&self) -> &[Parameter] { self.inner.parameters() }
+  pub fn parts(&self) -> &[Part] { self.inner.parts() }
+  pub fn drawables(&self) -> &[Drawable] { self.inner.drawables() }
 }
 
 /// Dynamic states of a model.
 #[derive(Debug)]
 pub struct ModelDynamic {
-  inner: platform_impl::PlatformModelDynamic,
+  inner: PlatformModelDynamic,
 }
 impl ModelDynamic {
   pub fn parameter_values(&self) -> &[f32] { self.inner.parameter_values() }
@@ -315,84 +204,13 @@ impl<'a> std::ops::DerefMut for ModelDynamicWriteLockGuard<'a> {
   }
 }
 
-pub type ConstantDrawableFlagSet = FlagSet<ConstantDrawableFlags>;
-flags! {
-  pub enum ConstantDrawableFlags: u8 {
-    BlendAdditive,
-    BlendMultiplicative,
-    IsDoubleSided,
-    IsInvertedMask,
-  }
-}
-assert_eq_align!(ConstantDrawableFlagSet, u8);
-assert_eq_size!(ConstantDrawableFlagSet, u8);
 
-pub type DynamicDrawableFlagSet = FlagSet<DynamicDrawableFlags>;
-flags! {
-  pub enum DynamicDrawableFlags: u8 {
-    IsVisible,
-    VisibilityDidChange,
-    OpacityDidChange,
-    DrawOrderDidChange,
-    RenderOrderDidChange,
-    VertexPositionsDidChange,
-    BlendColorDidChange,
-  }
-}
-assert_eq_align!(DynamicDrawableFlagSet, u8);
-assert_eq_size!(DynamicDrawableFlagSet, u8);
 
 //
 // Internal
 //
 
-mod platform_iface {
-  pub use super::{MocError, CubismVersion, MocVersion};
-  pub use super::{Vector2, Vector4, ModelStatic, ModelDynamic, DynamicDrawableFlagSet};
-
-  pub trait PlatformCubismCoreIface {
-    type PlatformMoc;
-
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    unsafe fn set_log_function<F>(f: F)
-    where
-      F: FnMut(&str) + Send + 'static;
-
-    fn version(&self) -> CubismVersion;
-    fn latest_supported_moc_version(&self) -> MocVersion;
-
-    fn platform_moc_from_bytes(&self, bytes: &[u8]) -> Result<(MocVersion, Self::PlatformMoc), MocError>;
-  }
-
-  // TODO: A `PlatformMocIface` ?
-
-  pub trait PlatformModelIface {
-    type PlatformMoc;
-
-    fn from_platform_moc(platform_moc: &Self::PlatformMoc) -> (ModelStatic, ModelDynamic, Self);
-  }
-
-  pub trait PlatformModelDynamicIface {
-    fn parameter_values(&self) -> &[f32];
-    fn parameter_values_mut(&mut self) -> &mut [f32];
-    fn part_opacities(&self) -> &[f32];
-    fn part_opacities_mut(&mut self) -> &mut [f32];
-    fn drawable_dynamic_flagsets(&self) -> &[DynamicDrawableFlagSet];
-    fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [DynamicDrawableFlagSet];
-
-    fn drawable_draw_orders(&self) -> &[i32];
-    fn drawable_render_orders(&self) -> &[i32];
-    fn drawable_opacities(&self) -> &[f32];
-    fn drawable_vertex_position_containers(&self) -> &[&[Vector2]];
-    fn drawable_multiply_colors(&self) -> &[Vector4];
-    fn drawable_screen_colors(&self) -> &[Vector4];
-
-    fn update(&mut self);
-    fn reset_drawable_dynamic_flags(&mut self);
-  }
-}
-
-
+/*
 #[cfg(not(target_arch = "wasm32"))]
 mod platform_impl {
   use std::sync::Arc;
@@ -683,6 +501,8 @@ mod platform_impl {
     }
   }
 
+  // TODO: Do something about these `'static`s?
+
   #[derive(Debug)]
   pub struct PlatformModelDynamic {
     csm_model: *mut csmModel,
@@ -781,7 +601,9 @@ mod platform_impl {
     std::ffi::CStr::from_ptr(c_str_ptr).to_str().unwrap().to_string()
   }
 }
+*/
 
+/*
 #[cfg(target_arch = "wasm32")]
 mod platform_impl {
   use std::sync::Arc;
@@ -907,604 +729,8 @@ mod platform_impl {
       self.js_model.reset_drawable_dynamic_flags()
     }
   }
-
-  /// Not-so-direct bindings to the JavaScript interface of Live2D Cubism SDK Core for Web.
-  mod js {
-    const LIVE2DCUBISMCORE_JS_STR: &str = include_str!(concat!(env!("LIVE2D_CUBISM_SDK_WEB_DIR"), "/Core/live2dcubismcore.min.js"));
-
-    use wasm_bindgen::JsCast as _;
-
-    use crate::core;
-
-    #[allow(non_snake_case)]
-    #[derive(Debug)]
-    pub struct JsLive2DCubismCore {
-      pub cubism_version: core::CubismVersion,
-      pub latest_supported_moc_version: core::MocVersion,
-
-      /// The `Live2DCubismCore.Version` class object.
-      version_class: wasm_bindgen::JsValue,
-      /// The `Live2DCubismCore.Version.csmGetMocVersion` static method.
-      csmGetMocVersion: js_sys::Function,
-
-      /// The `Live2DCubismCore.Moc` class object.
-      moc_class: wasm_bindgen::JsValue,
-      /// The `Live2DCubismCore.Moc.fromArrayBuffer` static method.
-      from_array_buffer_method: js_sys::Function,
-
-      /// The `Live2DCubismCore.Model` class object.
-      model_class: wasm_bindgen::JsValue,
-      /// The `Live2DCubismCore.Model.fromMoc` static method.
-      from_moc_method: js_sys::Function,
-
-      /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
-      reset_dynamic_flags_method: js_sys::Function,
-    }
-
-    #[derive(Debug)]
-    pub struct JsMoc {
-      pub version: core::MocVersion,
-      /// An `Live2DCubismCore.Moc` instance object, acquired through the `Live2DCubismCore.Moc.fromArrayBuffer` static method.
-      moc_instance: wasm_bindgen::JsValue,
-    }
-
-    #[derive(Debug)]
-    pub struct JsModel {
-      pub canvas_info: core::CanvasInfo,
-      pub parameters: JsParameters,
-      pub parts: JsParts,
-      pub drawables: JsDrawables,
-
-      pub scratch: Scratch,
-
-      /// An `Live2DCubismCore.Model` instance object, acquired through the `Live2DCubismCore.Model.fromMoc` static method.
-      model_instance: wasm_bindgen::JsValue,
-      /// `Live2DCubismCore.Model.update` method.
-      update_method: js_sys::Function,
-      /// `Live2DCubismCore.Model.release` method.
-      release_method: js_sys::Function,
-    }
-
-    #[derive(Debug)]
-    pub struct JsParameters {
-      pub ids: Box<[String]>,
-      pub types: Box<[core::ParameterType]>,
-      pub minimum_values: Box<[f32]>,
-      pub maximum_values: Box<[f32]>,
-      pub default_values: Box<[f32]>,
-      pub key_value_containers: Box<[Box<[f32]>]>,
-
-      /// `Live2DCubismCore.Parameters.values` member.
-      values: js_sys::Float32Array,
-    }
-
-    #[derive(Debug)]
-    pub struct JsParts {
-      pub ids: Box<[String]>,
-      pub parent_part_indices: Box<[Option<usize>]>,
-
-      /// `Live2DCubismCore.Parts.opacities` member.
-      opacities: js_sys::Float32Array,
-    }
-
-    #[derive(Debug)]
-    pub struct JsDrawables {
-      pub ids: Box<[String]>,
-      pub constant_flagsets: Box<[core::ConstantDrawableFlagSet]>,
-      pub texture_indices: Box<[usize]>,
-      pub mask_containers: Box<[Box<[usize]>]>,
-      pub vertex_uv_containers: Box<[Box<[core::Vector2]>]>,
-      pub triangle_index_containers: Box<[Box<[u16]>]>,
-      pub parent_part_indices: Box<[Option<usize>]>,
-
-      /// The `drawables` member variable of `Live2DCubismCore.Model` instance object.
-      /// An instance of `Live2DCubismCore.Drawables` class object.
-      drawables_instance: wasm_bindgen::JsValue,
-      /// `Live2DCubismCore.Drawables.dynamicFlags` member.
-      dynamic_flags: js_sys::Uint8Array,
-      /// `Live2DCubismCore.Drawables.drawOrders` member.
-      draw_orders: js_sys::Int32Array,
-      /// `Live2DCubismCore.Drawables.renderOrders` member.
-      render_orders: js_sys::Int32Array,
-      /// `Live2DCubismCore.Drawables.opacities` member.
-      opacities: js_sys::Float32Array,
-      /// `Live2DCubismCore.Drawables.vertexPositions` member.
-      vertex_positions: js_sys::Array,
-      /// `Live2DCubismCore.Drawables.multiplyColors` member.
-      multiply_colors: js_sys::Float32Array,
-      /// `Live2DCubismCore.Drawables.screenColors` member.
-      screen_colors: js_sys::Float32Array,
-      /// `Live2DCubismCore.Drawables.resetDynamicFlags` method.
-      reset_dynamic_flags_method: js_sys::Function,
-    }
-
-    impl Default for JsLive2DCubismCore {
-      fn default() -> Self {
-        #![allow(non_snake_case)]
-
-        let code = format!("{LIVE2DCUBISMCORE_JS_STR}\n Live2DCubismCore");
-        let live2d_cubism_core_namespace = js_sys::eval(&code).expect("Failed to evaluate synthesized JavaScript code!");
-
-        let version_class = get_member_value(&live2d_cubism_core_namespace, "Version");
-
-        let cubism_version = {
-          let csmGetVersion = get_member_function(&version_class, "csmGetVersion");
-          core::CubismVersion(csmGetVersion.call0(&version_class).unwrap().as_f64().unwrap() as u32)
-        };
-        let latest_supported_moc_version = {
-          let csmGetLatestMocVersion = get_member_function(&version_class, "csmGetLatestMocVersion");
-          core::MocVersion::try_from(csmGetLatestMocVersion.call0(&version_class).unwrap().as_f64().unwrap() as u32).unwrap()
-        };
-
-        let csmGetMocVersion = get_member_function(&version_class, "csmGetMocVersion");
-
-        let moc_class = get_member_value(&live2d_cubism_core_namespace, "Moc");
-        let from_array_buffer_method = get_member_function(&moc_class, "fromArrayBuffer");
-
-        let model_class = get_member_value(&live2d_cubism_core_namespace, "Model");
-        let from_moc_method = get_member_function(&model_class, "fromMoc");
-
-        let drawables_class = get_member_value(&live2d_cubism_core_namespace, "Drawables");
-        let prototype = get_member_value(&drawables_class, "prototype");
-        let reset_dynamic_flags_method = get_member_function(&prototype, "resetDynamicFlags");
-
-        Self {
-          cubism_version,
-          latest_supported_moc_version,
-
-          version_class,
-          csmGetMocVersion,
-
-          moc_class,
-          from_array_buffer_method,
-
-          model_class,
-          from_moc_method,
-
-          reset_dynamic_flags_method,
-        }
-      }
-    }
-
-    impl JsLive2DCubismCore {
-      pub fn moc_from_js_array_buffer(&self, array_buffer: js_sys::ArrayBuffer) -> Option<JsMoc> {
-        // `Version.csmGetMocVersion` requires a `Moc`, unlike the `csmGetMocVersion` in the Native SDK.
-        let moc_instance = self.from_array_buffer_method.call1(&self.moc_class, array_buffer.as_ref()).unwrap();
-        if moc_instance.is_null() {
-          log::error!("Live2DCubismCore.Moc.fromArrayBuffer failed!");
-          return None;
-        }
-
-        let version = self.get_moc_version(&moc_instance, &array_buffer);
-
-        Some(JsMoc {
-          version,
-          moc_instance,
-        })
-      }
-      #[allow(dead_code)]
-      pub fn moc_from_bytes(&self, bytes: &[u8]) -> Option<JsMoc> {
-        let array = js_sys::Uint8Array::new_with_length(bytes.len().try_into().unwrap());
-        array.copy_from(bytes);
-
-        self.moc_from_js_array_buffer(array.buffer())
-      }
-
-      /// Equivalent to `csmGetMocVersion`.
-      pub fn get_moc_version(&self, js_moc_instance: &wasm_bindgen::JsValue, array_buffer: &js_sys::ArrayBuffer) -> core::MocVersion {
-        let moc_version = self.csmGetMocVersion.call2(
-          &self.version_class, js_moc_instance, array_buffer.as_ref()
-        )
-        .unwrap().as_f64().unwrap() as u32;
-        core::MocVersion::try_from(moc_version).unwrap()
-      }
-
-      pub fn model_from_moc(&self, moc: &JsMoc) -> JsModel {
-        let model_instance = self.from_moc_method.call1(&self.moc_class, moc.moc_instance.as_ref()).unwrap();
-
-        let prototype = get_member_value(&self.model_class, "prototype");
-        let update_method = get_member_function(&prototype, "update");
-        let release_method = get_member_function(&prototype, "release");
-
-        let canvas_info = {
-          let canvas_info_instance = get_member_value(&model_instance, "canvasinfo");
-          let canvas_width = get_member_value(&canvas_info_instance, "CanvasWidth").as_f64().unwrap() as f32;
-          let canvas_height = get_member_value(&canvas_info_instance, "CanvasHeight").as_f64().unwrap() as f32;
-          let canvas_origin_x = get_member_value(&canvas_info_instance, "CanvasOriginX").as_f64().unwrap() as f32;
-          let canvas_origin_y = get_member_value(&canvas_info_instance, "CanvasOriginY").as_f64().unwrap() as f32;
-          let pixels_per_unit = get_member_value(&canvas_info_instance, "PixelsPerUnit").as_f64().unwrap() as f32;
-
-          core::CanvasInfo {
-            size_in_pixels: (canvas_width, canvas_height),
-            origin_in_pixels: (canvas_origin_x, canvas_origin_y),
-            pixels_per_unit,
-          }
-        };
-
-        let parameters = JsParameters::from_parameters_instance(get_member_value(&model_instance, "parameters"));
-        let parts = JsParts::from_parts_instance(get_member_value(&model_instance, "parts"));
-        let drawables = JsDrawables::from_drawables_instance(
-          self.reset_dynamic_flags_method.clone(),
-          get_member_value(&model_instance, "drawables")
-        );
-
-        let scratch = Scratch::new(&parameters, &parts, &drawables);
-
-        JsModel {
-          canvas_info,
-          parameters,
-          parts,
-          drawables,
-
-          scratch,
-
-          model_instance,
-          update_method,
-          release_method,
-        }
-      }
-    }
-
-    impl JsModel {
-      pub fn update(&mut self) {
-        self.scratch.store_into(&self.parameters, &self.parts, &self.drawables);
-        self.update_method.call0(&self.model_instance).unwrap();
-        self.scratch.load_from(&self.drawables);
-      }
-      pub fn reset_drawable_dynamic_flags(&mut self) {
-        self.drawables.reset_dynamic_flags_method.call0(&self.drawables.drawables_instance).unwrap();
-        self.scratch.load_from(&self.drawables);
-      }
-    }
-    impl Drop for JsModel {
-      fn drop(&mut self) {
-        self.release_method.call0(&self.model_instance).unwrap();
-      }
-    }
-
-    impl JsParameters {
-      /// * `parameters_instance` - The `parameters` member variable of a `Live2DCubismCore.Model` instance object, i.e an instance of `Live2DCubismCore.Parameters` class object.
-      fn from_parameters_instance(parameters_instance: wasm_bindgen::JsValue) -> Self {
-        let ids: Box<[_]> = get_member_array(&parameters_instance, "ids").iter()
-          .map(|value| value.as_string().unwrap())
-          .collect();
-
-        let types: Box<[_]> = get_member_array(&parameters_instance, "types").iter()
-          .map(|value| core::ParameterType::try_from(value.as_f64().unwrap() as i32).unwrap())
-          .collect();
-
-        let minimum_values: Box<[_]> = get_member_array(&parameters_instance, "minimumValues").iter()
-          .map(|value| value.as_f64().unwrap() as f32)
-          .collect();
-
-        let maximum_values: Box<[_]> = get_member_array(&parameters_instance, "maximumValues").iter()
-          .map(|value| value.as_f64().unwrap() as f32)
-          .collect();
-
-        let default_values: Box<[_]> = get_member_array(&parameters_instance, "defaultValues").iter()
-          .map(|value| value.as_f64().unwrap() as f32)
-          .collect();
-
-        let key_value_containers: Box<[Box<[f32]>]> = get_member_array(&parameters_instance, "keyValues").iter()
-          .map(|value| {
-            js_sys::Array::from(&value).iter()
-              .map(|value| value.as_f64().unwrap() as f32)
-              .collect()
-          })
-          .collect();
-
-        let values = get_member_value(&parameters_instance, "values").dyn_into::<js_sys::Float32Array>().unwrap();
-
-        Self {
-          ids,
-          types,
-          minimum_values,
-          maximum_values,
-          default_values,
-          key_value_containers,
-
-          values,
-        }
-      }
-
-      pub fn to_aos(&self) -> Vec<core::Parameter> {
-        itertools::izip!(self.ids.iter(), self.types.iter(), self.minimum_values.iter(), self.maximum_values.iter(), self.default_values.iter(), self.key_value_containers.iter())
-          .map(|(id, ty, minimum_value, maximum_value, default_value, key_value_container)| {
-            core::Parameter {
-              id: id.clone(),
-              ty: *ty,
-              value_range: (*minimum_value, *maximum_value),
-              default_value: *default_value,
-              keys: key_value_container.clone(),
-            }
-          })
-          .collect()
-      }
-    }
-
-    impl JsParts {
-      /// * `parts_instance` - The `parts` member variable of a `Live2DCubismCore.Model` instance object, i.e an instance of `Live2DCubismCore.Parts` class object.
-      fn from_parts_instance(parts_instance: wasm_bindgen::JsValue) -> Self {
-        let ids: Box<[_]> = get_member_array(&parts_instance, "ids").iter()
-          .map(|value| value.as_string().unwrap())
-          .collect();
-
-        let parent_part_indices: Box<[_]> = get_member_array(&parts_instance, "parentIndices").iter()
-          .map(|value| {
-            let number = value.as_f64().unwrap();
-            (number > 0.0).then_some(number as usize)
-          })
-          .collect();
-
-        let opacities = get_member_value(&parts_instance, "opacities").dyn_into::<js_sys::Float32Array>().unwrap();
-
-        Self {
-          ids,
-          parent_part_indices,
-
-          opacities,
-        }
-      }
-
-      pub fn to_aos(&self) -> Vec<core::Part> {
-        itertools::izip!(self.ids.iter(), self.parent_part_indices.iter())
-          .map(|(id, parent_part_index)| {
-            core::Part {
-              id: id.clone(),
-              parent_part_index: *parent_part_index,
-            }
-          })
-          .collect()
-      }
-    }
-
-    impl JsDrawables {
-      fn from_drawables_instance(reset_dynamic_flags_method: js_sys::Function, drawables_instance: wasm_bindgen::JsValue) -> Self {
-        let ids: Box<[_]> = get_member_array(&drawables_instance, "ids").iter()
-          .map(|value| value.as_string().unwrap())
-          .collect();
-
-        let constant_flagsets: Box<[_]> = get_member_array(&drawables_instance, "constantFlags").iter()
-          .map(|value| {
-            core::ConstantDrawableFlagSet::new(value.as_f64().unwrap() as u8).unwrap()
-          })
-          .collect();
-
-        let texture_indices: Box<[_]> = get_member_array(&drawables_instance, "textureIndices").iter()
-          .map(|value| value.as_f64().unwrap() as usize)
-          .collect();
-
-        let mask_containers: Box<[_]> = get_member_array(&drawables_instance, "masks").iter()
-          .map(|mask_container| {
-            js_sys::Array::from(&mask_container).iter()
-              .map(|mask| mask.as_f64().unwrap() as usize)
-              .collect::<Box<[_]>>()
-          })
-          .collect();
-
-        let vertex_uv_containers: Box<[_]> = get_member_array(&drawables_instance, "vertexUvs").iter()
-          .map(|v| {
-            let typed_array = v.dyn_into::<js_sys::Float32Array>().unwrap();
-            float32_array_to_new_vec(&typed_array).into_boxed_slice()
-          })
-          .collect();
-
-        let triangle_index_containers: Box<[_]> = get_member_array(&drawables_instance, "indices").iter()
-          .map(|v| {
-            let typed_array = v.dyn_into::<js_sys::Uint16Array>().unwrap();
-            uint16_array_to_new_vec(&typed_array).into_boxed_slice()
-          })
-          .collect();
-
-        let parent_part_indices: Box<[_]> = get_member_array(&drawables_instance, "parentPartIndices").iter()
-          .map(|value| {
-            let number = value.as_f64().unwrap();
-            (number > 0.0).then_some(number as usize)
-            })
-          .collect();
-
-        let dynamic_flags = get_member_value(&drawables_instance, "dynamicFlags").dyn_into::<js_sys::Uint8Array>().unwrap();
-        let draw_orders = get_member_value(&drawables_instance, "drawOrders").dyn_into::<js_sys::Int32Array>().unwrap();
-        let render_orders = get_member_value(&drawables_instance, "renderOrders").dyn_into::<js_sys::Int32Array>().unwrap();
-        let opacities = get_member_value(&drawables_instance, "opacities").dyn_into::<js_sys::Float32Array>().unwrap();
-        let vertex_positions = get_member_array(&drawables_instance, "vertexPositions");
-        let multiply_colors = get_member_value(&drawables_instance, "multiplyColors").dyn_into::<js_sys::Float32Array>().unwrap();
-        let screen_colors = get_member_value(&drawables_instance, "screenColors").dyn_into::<js_sys::Float32Array>().unwrap();
-
-        Self {
-          ids,
-          constant_flagsets,
-          texture_indices,
-          mask_containers,
-          vertex_uv_containers,
-          triangle_index_containers,
-          parent_part_indices,
-
-          drawables_instance,
-          dynamic_flags,
-          draw_orders,
-          render_orders,
-          opacities,
-          vertex_positions,
-          multiply_colors,
-          screen_colors,
-          reset_dynamic_flags_method,
-        }
-      }
-
-      pub fn to_aos(&self) -> Vec<core::Drawable> {
-        itertools::izip!(self.ids.iter(), self.constant_flagsets.iter(), self.texture_indices.iter(), self.mask_containers.iter(), self.vertex_uv_containers.iter(), self.triangle_index_containers.iter(), self.parent_part_indices.iter())
-          .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index)| {
-            core::Drawable {
-              id: id.clone(),
-              constant_flagset: *constant_flagset,
-              texture_index: *texture_index,
-              masks: mask_container.clone(),
-              vertex_uvs: vertex_uv_container.clone(),
-              triangle_indices: triangle_index_container.clone(),
-              parent_part_index: *parent_part_index,
-            }
-          })
-          .collect()
-      }
-    }
-
-    /// Scratch buffer for dynamic values.
-    #[derive(Debug)]
-    pub struct Scratch {
-      parameter_values: Box<[f32]>,
-      part_opacities: Box<[f32]>,
-      drawable_dynamic_flagsets: Box<[core::DynamicDrawableFlagSet]>,
-      drawable_draw_orders: Box<[i32]>,
-      drawable_render_orders: Box<[i32]>,
-      drawable_opacities: Box<[f32]>,
-      drawable_vertex_position_containers: Box<[Box<[core::Vector2]>]>,
-      drawable_vertex_position_container_refs: Box<[&'static [core::Vector2]]>,
-      drawable_multiply_colors: Box<[core::Vector4]>,
-      drawable_screen_colors: Box<[core::Vector4]>,
-    }
-    impl Scratch {
-      pub fn parameter_values(&self) -> &[f32] { &self.parameter_values }
-      pub fn parameter_values_mut(&mut self) -> &mut [f32] { &mut self.parameter_values }
-      pub fn part_opacities(&self) -> &[f32] { &self.part_opacities }
-      pub fn part_opacities_mut(&mut self) -> &mut [f32] { &mut self.part_opacities }
-      pub fn drawable_dynamic_flagsets(&self) -> &[core::DynamicDrawableFlagSet] { &self.drawable_dynamic_flagsets }
-      pub fn drawable_dynamic_flagsets_mut(&mut self) -> &mut [core::DynamicDrawableFlagSet] { &mut self.drawable_dynamic_flagsets }
-      pub fn drawable_draw_orders(&self) -> &[i32] { &self.drawable_draw_orders }
-      pub fn drawable_render_orders(&self) -> & [i32] { &self.drawable_render_orders }
-      pub fn drawable_opacities(&self) -> &[f32] { &self.drawable_opacities }
-      pub fn drawable_vertex_position_containers(&self) -> &[&[core::Vector2]] { &self.drawable_vertex_position_container_refs }
-      pub fn drawable_multiply_colors(&self) -> &[core::Vector4] { &self.drawable_multiply_colors }
-      pub fn drawable_screen_colors(&self) -> &[core::Vector4] { &self.drawable_screen_colors }
-
-      fn new(parameters: &JsParameters, parts: &JsParts, drawables: &JsDrawables) -> Self {
-        let parameter_values = float32_array_to_new_vec(&parameters.values).into_boxed_slice();
-        let part_opacities = float32_array_to_new_vec(&parts.opacities).into_boxed_slice();
-        let drawable_dynamic_flagsets = uint8_array_to_new_vec::<core::DynamicDrawableFlagSet>(&drawables.dynamic_flags).into_boxed_slice();
-        let drawable_draw_orders = int32_array_to_new_vec(&drawables.draw_orders).into_boxed_slice();
-        let drawable_render_orders = int32_array_to_new_vec(&drawables.render_orders).into_boxed_slice();
-        let drawable_opacities = float32_array_to_new_vec(&drawables.opacities).into_boxed_slice();
-
-        let drawable_vertex_position_containers: Box<[_]> = drawables.vertex_positions.iter()
-          .map(|f32_array| {
-            let f32_array = f32_array.dyn_into::<js_sys::Float32Array>().unwrap();
-            float32_array_to_new_vec::<core::Vector2>(&f32_array).into_boxed_slice()
-          })
-          .collect();
-        let drawable_vertex_position_container_refs: Box<[_]> = drawable_vertex_position_containers.iter()
-          .map(|v| {
-            // SAFETY: A boxed slice is pointer-stable.
-            unsafe { std::slice::from_raw_parts(v.as_ptr(), v.len()) }}
-          )
-          .collect();
-
-        let drawable_multiply_colors = float32_array_to_new_vec::<core::Vector4>(&drawables.multiply_colors).into_boxed_slice();
-        let drawable_screen_colors = float32_array_to_new_vec::<core::Vector4>(&drawables.screen_colors).into_boxed_slice();
-
-        Self {
-          parameter_values,
-          part_opacities,
-          drawable_dynamic_flagsets,
-          drawable_draw_orders,
-          drawable_render_orders,
-          drawable_opacities,
-          drawable_vertex_position_containers,
-          drawable_vertex_position_container_refs,
-          drawable_multiply_colors,
-          drawable_screen_colors,
-        }
-      }
-
-      fn store_into(&mut self, parameters: &JsParameters, parts: &JsParts, drawables: &JsDrawables) {
-        parameters.values.copy_from(&self.parameter_values);
-        parts.opacities.copy_from(&self.part_opacities);
-        {
-          // SAFETY: Size and alignment asserted to match.
-          let src = unsafe {
-            std::slice::from_raw_parts(self.drawable_dynamic_flagsets.as_ptr() as *const u8, self.drawable_dynamic_flagsets.len())
-          };
-          drawables.dynamic_flags.copy_from(src);
-        }
-      }
-      fn load_dynamic_flags_from(&mut self, drawables: &JsDrawables) {
-        uint8_array_overwrite_slice(&mut self.drawable_dynamic_flagsets, &drawables.dynamic_flags);
-      }
-      fn load_from(&mut self, drawables: &JsDrawables) {
-        self.load_dynamic_flags_from(drawables);
-
-        int32_array_overwrite_slice(&mut self.drawable_draw_orders, &drawables.draw_orders);
-        int32_array_overwrite_slice(&mut self.drawable_render_orders, &drawables.render_orders);
-        f32_array_overwrite_slice(&mut self.drawable_opacities, &drawables.opacities);
-
-        for (vertex_position_container, f32_array) in itertools::izip!(self.drawable_vertex_position_containers.iter_mut(), drawables.vertex_positions.iter()) {
-          let f32_array = f32_array.dyn_into::<js_sys::Float32Array>().unwrap();
-          f32_array_overwrite_slice(vertex_position_container, &f32_array);
-        }
-
-        f32_array_overwrite_slice(&mut self.drawable_multiply_colors, &drawables.multiply_colors);
-        f32_array_overwrite_slice(&mut self.drawable_screen_colors, &drawables.screen_colors);
-      }
-    }
-
-    fn get_member_value<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> wasm_bindgen::JsValue {
-      js_sys::Reflect::get(value, &name.as_ref().into()).unwrap_or_else(|e| panic!("No member {name:?}! {e:?}"))
-    }
-    /// Requires `N` to be [`Clone`] to allow error reporting when panicking.
-    fn get_member_function<N: AsRef<str> + Clone + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Function {
-      get_member_value(value, name.clone()).dyn_into().unwrap_or_else(|e| panic!("member {name:?} not a Function! {e:?}"))
-    }
-    fn get_member_array<N: AsRef<str> + std::fmt::Debug>(value: &wasm_bindgen::JsValue, name: N) -> js_sys::Array {
-      js_sys::Array::from(&get_member_value(value, name))
-    }
-
-    fn uint8_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Uint8Array) {
-      typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
-    }
-    fn int32_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Int32Array) {
-      typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
-    }
-    fn f32_array_overwrite_slice<O>(dst: &mut [O], typed_array: &js_sys::Float32Array) {
-      typed_array_overwrite_slice(dst, typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr) })
-    }
-    fn typed_array_overwrite_slice<O, E, W: FnOnce(*mut E)>(dst: &mut [O], length: u32, writer: W) {
-      let src_element_size = std::mem::size_of::<E>();
-      let dst_element_size = std::mem::size_of::<O>();
-      let dst_len = length as usize / (dst_element_size / src_element_size);
-      assert!(dst_len <= dst.len());
-
-      writer(dst.as_mut_ptr() as *mut E)
-    }
-
-    fn uint8_array_to_new_vec<O>(typed_array: &js_sys::Uint8Array) -> Vec<O> {
-      typed_array_to_new_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
-    }
-    fn uint16_array_to_new_vec<O>(typed_array: &js_sys::Uint16Array) -> Vec<O> {
-      typed_array_to_new_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
-    }
-    fn int32_array_to_new_vec<O>(typed_array: &js_sys::Int32Array) -> Vec<O> {
-      typed_array_to_new_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
-    }
-    fn float32_array_to_new_vec<O>(typed_array: &js_sys::Float32Array) -> Vec<O> {
-      typed_array_to_new_vec(typed_array.length(), |ptr| unsafe { typed_array.raw_copy_to_ptr(ptr); })
-    }
-    fn typed_array_to_new_vec<O, E, W: FnOnce(*mut E)>(length: u32, writer: W) -> Vec<O> {
-      let src_element_size = std::mem::size_of::<E>();
-      let dst_element_size = std::mem::size_of::<O>();
-
-      let dst_len = length as usize / (dst_element_size / src_element_size);
-      let mut dst = Vec::<O>::with_capacity(dst_len);
-      writer(dst.as_mut_ptr() as *mut E);
-
-      // SAFETY:
-      // 1. Constructed with `with_capacity`.
-      // 2. `writer` must have initialized the elements.
-      unsafe {
-        dst.set_len(dst_len);
-      }
-      dst
-    }
-  }
 }
+*/
 
 #[cfg(not(target_arch = "wasm32"))]
 macro_rules! if_native {
