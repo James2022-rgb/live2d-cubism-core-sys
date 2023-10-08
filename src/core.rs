@@ -20,7 +20,7 @@ use internal::platform_impl::{PlatformCubismCore, PlatformMoc, PlatformModelStat
 if_native! {
   use static_assertions::assert_impl_all;
 
-  // TODO: Assert `Send` and `Sync` for `CubismCore`?
+  assert_impl_all!(CubismCore: Send, Sync);
   assert_impl_all!(Moc: Send, Sync);
   assert_impl_all!(Model: Send, Sync);
 }
