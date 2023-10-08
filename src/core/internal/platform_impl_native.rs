@@ -290,7 +290,10 @@ impl PlatformMocInterface for PlatformMoc {
       drawable_draw_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableDrawOrders(csm_model), drawable_count) },
       drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawable_count) },
       drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawable_count) },
-      vertex_position_containers: VertexPositionContainers::new(csm_model),
+      // SAFETY: `csm_model` is behind an `Arc` we own.
+      vertex_position_containers: unsafe {
+        VertexPositionContainers::new(csm_model)
+      },
       drawable_multiply_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableMultiplyColors(csm_model).cast(), drawable_count) },
       drawable_screen_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableScreenColors(csm_model).cast(), drawable_count) },
 
@@ -403,7 +406,10 @@ impl PlatformModelDynamicInterface for PlatformModelDynamic {
       csmUpdateModel(self.platform_model.csm_model);
     }
 
-    self.vertex_position_containers = VertexPositionContainers::new(self.platform_model.csm_model);
+    // SAFETY: `csm_model` is behind an `Arc` we own.
+    unsafe {
+      self.vertex_position_containers = VertexPositionContainers::new(self.platform_model.csm_model);
+    }
   }
   fn reset_drawable_dynamic_flags(&mut self) {
     unsafe {
@@ -417,8 +423,9 @@ struct VertexPositionContainers<'a> {
   inner: Box<[&'a [Vector2]]>,
 }
 impl<'a> VertexPositionContainers<'a> {
-  // TODO: This should be unsafe?
-  fn new(csm_model: *mut csmModel) -> Self {
+  /// ## Safety
+  /// - `csm_model` MUST be valid for lifetime `'a`.
+  unsafe fn new(csm_model: *mut csmModel) -> Self {
     Self {
       inner: unsafe {
         let drawable_count: usize = csmGetDrawableCount(csm_model).try_into().unwrap();
