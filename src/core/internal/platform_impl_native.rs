@@ -64,7 +64,7 @@ impl PlatformCubismCoreInterface for PlatformCubismCore {
     let size_in_u32: u32 = bytes.len().try_into().expect("Size should fit in a u32");
 
     let moc_version = unsafe {
-      csmGetMocVersion(aligned_storage.as_mut_ptr() as *mut _, size_in_u32)
+      csmGetMocVersion(aligned_storage.as_mut_ptr().cast(), size_in_u32)
     };
     let moc_version = MocVersion::try_from(moc_version).map_err(|_| MocError::InvalidMoc)?;
 
@@ -76,7 +76,7 @@ impl PlatformCubismCoreInterface for PlatformCubismCore {
     }
 
     let csm_moc = unsafe {
-      csmReviveMocInPlace(aligned_storage.as_mut_ptr() as *mut _, size_in_u32)
+      csmReviveMocInPlace(aligned_storage.as_mut_ptr().cast(), size_in_u32)
     };
 
     Ok(
@@ -115,7 +115,7 @@ impl PlatformMocInterface for PlatformMoc {
     let mut csm_model_storage = AlignedStorage::new(storage_size as _, MODEL_ALIGNMENT).unwrap();
 
     let csm_model = unsafe {
-      csmInitializeModelInPlace(self.csm_moc, csm_model_storage.as_mut_ptr() as *mut _, storage_size)
+      csmInitializeModelInPlace(self.csm_moc, csm_model_storage.as_mut_ptr().cast(), storage_size)
     };
 
     let canvas_info = unsafe {
@@ -225,7 +225,7 @@ impl PlatformMocInterface for PlatformMoc {
         itertools::izip!(vertex_counts, vertex_uv_ptrs)
           .map(|(&vertex_count, &vertex_uv_ptr)| {
             let vertex_count: usize = vertex_count.try_into().unwrap();
-            std::slice::from_raw_parts(vertex_uv_ptr as *const Vector2, vertex_count).to_vec().into_boxed_slice()
+            std::slice::from_raw_parts(vertex_uv_ptr.cast::<Vector2>(), vertex_count).to_vec().into_boxed_slice()
           })
           .collect()
       };
@@ -283,18 +283,16 @@ impl PlatformMocInterface for PlatformMoc {
       _model_storage: Arc::clone(&model_storage),
     };
 
-    // TODO: Use pointer cast methods.
-
     let platform_model_dynamic = PlatformModelDynamic {
       parameter_values: unsafe { std::slice::from_raw_parts_mut(csmGetParameterValues(csm_model), parameter_count) },
       part_opactities: unsafe { std::slice::from_raw_parts_mut(csmGetPartOpacities(csm_model), part_count) },
-      drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts(csmGetDrawableDynamicFlags(csm_model) as *const _, drawable_count) },
+      drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts(csmGetDrawableDynamicFlags(csm_model).cast(), drawable_count) },
       drawable_draw_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableDrawOrders(csm_model), drawable_count) },
       drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawable_count) },
       drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawable_count) },
       vertex_position_containers: VertexPositionContainers::new(csm_model),
-      drawable_multiply_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableMultiplyColors(csm_model) as *const _, drawable_count) },
-      drawable_screen_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableScreenColors(csm_model) as *const _, drawable_count) },
+      drawable_multiply_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableMultiplyColors(csm_model).cast(), drawable_count) },
+      drawable_screen_colors: unsafe { std::slice::from_raw_parts(csmGetDrawableScreenColors(csm_model).cast(), drawable_count) },
 
       platform_model: Arc::clone(&model_storage),
     };
@@ -431,7 +429,7 @@ impl<'a> VertexPositionContainers<'a> {
         itertools::izip!(vertex_counts, vertex_position_ptrs)
           .map(|(&vertex_count, &vertex_position_ptr)| {
             let vertex_count: usize = vertex_count.try_into().unwrap();
-            std::slice::from_raw_parts(vertex_position_ptr as *const Vector2, vertex_count)
+            std::slice::from_raw_parts(vertex_position_ptr.cast::<Vector2>(), vertex_count)
           })
           .collect()
       }

@@ -659,7 +659,7 @@ mod js {
       {
         // SAFETY: Size and alignment asserted to match.
         let src = unsafe {
-          std::slice::from_raw_parts(self.drawable_dynamic_flagsets.as_ptr() as *const u8, self.drawable_dynamic_flagsets.len())
+          std::slice::from_raw_parts(self.drawable_dynamic_flagsets.as_ptr().cast::<u8>(), self.drawable_dynamic_flagsets.len())
         };
         drawables.dynamic_flags.copy_from(src);
       }
@@ -710,7 +710,7 @@ mod js {
     let dst_len = length as usize / (dst_element_size / src_element_size);
     assert!(dst_len <= dst.len());
 
-    writer(dst.as_mut_ptr() as *mut E)
+    writer(dst.as_mut_ptr().cast::<E>())
   }
 
   fn uint8_array_to_new_vec<O>(typed_array: &js_sys::Uint8Array) -> Vec<O> {
@@ -731,7 +731,7 @@ mod js {
 
     let dst_len = length as usize / (dst_element_size / src_element_size);
     let mut dst = Vec::<O>::with_capacity(dst_len);
-    writer(dst.as_mut_ptr() as *mut E);
+    writer(dst.as_mut_ptr().cast::<E>());
 
     // SAFETY:
     // 1. Constructed with `with_capacity`.
