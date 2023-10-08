@@ -37,13 +37,11 @@ impl CubismVersion {
 }
 impl std::fmt::Display for CubismVersion {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // TODO: Hex?
-    write!(f, "{:02}.{:02}.{:04} ({})", self.major(), self.minor(), self.patch(), self.0)
+    write!(f, "{:02}.{:02}.{:04} (0x{:08x})", self.major(), self.minor(), self.patch(), self.0)
   }
 }
 impl std::fmt::Debug for CubismVersion {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // TODO: Hex?
     write!(f, "{}", self)
   }
 }
