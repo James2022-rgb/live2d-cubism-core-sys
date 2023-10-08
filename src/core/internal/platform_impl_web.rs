@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::platform_iface::{Vector2, Vector4};
 use super::platform_iface::{MocError, CubismVersion, MocVersion};
 use super::platform_iface::{CanvasInfo, Parameter, Part, Drawable};
-use super::platform_iface::{ConstantDrawableFlagSet, DynamicDrawableFlagSet};
+use super::platform_iface::DynamicDrawableFlagSet;
 use super::platform_iface::{PlatformCubismCoreInterface, PlatformMocInterface, PlatformModelStaticInterface, PlatformModelDynamicInterface};
 
 #[derive(Debug, Default)]
