@@ -64,3 +64,51 @@ pub enum MocVersion {
   #[display(fmt = "33(4.2.00 -)")]
   Moc3_42 = 4,
 }
+
+/// Strong-typed index to a texture referenced from a Moc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
+#[repr(transparent)]
+pub struct TextureIndex(pub u64);
+
+impl TextureIndex {
+  #[inline]
+  pub fn as_usize(&self) -> usize {
+    self.0 as usize
+  }
+}
+
+impl From<usize> for TextureIndex {
+  fn from(value: usize) -> Self {
+    Self(value as u64)
+  }
+}
+
+impl std::fmt::Display for TextureIndex {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+/// Strong-typed index to a drawable in a model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shrinkwrap)]
+#[repr(transparent)]
+pub struct DrawableIndex(pub u64);
+
+impl DrawableIndex {
+  #[inline]
+  pub fn as_usize(&self) -> usize {
+    self.0 as usize
+  }
+}
+
+impl From<usize> for DrawableIndex {
+  fn from(value: usize) -> Self {
+    Self(value as u64)
+  }
+}
+
+impl std::fmt::Display for DrawableIndex {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}

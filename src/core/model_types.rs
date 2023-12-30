@@ -4,6 +4,8 @@ use static_assertions::{assert_eq_align, assert_eq_size};
 use num_enum::TryFromPrimitive;
 use flagset::{FlagSet, flags};
 
+use super::base_types::{TextureIndex, DrawableIndex};
+
 //
 // Canvas
 //
@@ -121,8 +123,9 @@ assert_eq_size!(DynamicDrawableFlagSet, u8);
 #[derive(Debug, Clone)]
 pub struct Drawable {
   pub(crate) id: String,
+  pub(crate) index: DrawableIndex,
   pub(crate) constant_flagset: ConstantDrawableFlagSet,
-  pub(crate) texture_index: usize,
+  pub(crate) texture_index: TextureIndex,
   pub(crate) masks: Box<[usize]>,
   pub(crate) vertex_uvs: Box<[Vector2]>,
   pub(crate) triangle_indices: Box<[u16]>,
@@ -132,10 +135,13 @@ impl Drawable {
   pub fn id(&self) -> &str {
     self.id.as_str()
   }
+  pub fn index(&self) -> DrawableIndex {
+    self.index
+  }
   pub fn constant_flagset(&self) -> ConstantDrawableFlagSet {
     self.constant_flagset
   }
-  pub fn texture_index(&self) -> usize {
+  pub fn texture_index(&self) -> TextureIndex {
     self.texture_index
   }
   pub fn masks(&self) -> &[usize] {

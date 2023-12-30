@@ -12,6 +12,7 @@ use super::platform_iface::{CanvasInfo, Parameter, Part, Drawable};
 use super::platform_iface::{ConstantDrawableFlagSet, DynamicDrawableFlagSet};
 use super::platform_iface::{PlatformCubismCoreInterface, PlatformMocInterface, PlatformModelStaticInterface, PlatformModelDynamicInterface};
 
+use super::super::base_types::{TextureIndex, DrawableIndex};
 use super::super::model_types::ParameterType;
 
 assert_eq_align!(Vector2, csmVector2);
@@ -250,11 +251,13 @@ impl PlatformMocInterface for PlatformMoc {
         .map(|&value| (value > 0).then_some(value as usize)).collect();
 
       itertools::izip!(ids, constant_flagsets, texture_indices, mask_containers.iter(), vertex_uv_containers.iter(), triangle_index_containers.iter(), parent_part_indices)
-        .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index),| {
+        .enumerate()
+        .map(|(index, (id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index))| {
           Drawable {
             id,
+            index: DrawableIndex(index as u64),
             constant_flagset,
-            texture_index,
+            texture_index: TextureIndex(texture_index as u64),
             masks: mask_container.clone(),
             vertex_uvs: vertex_uv_container.clone(),
             triangle_indices: triangle_index_container.clone(),

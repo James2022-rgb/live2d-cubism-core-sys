@@ -153,6 +153,7 @@ mod js {
   use wasm_bindgen::JsCast as _;
 
   use crate::core;
+  use core::base_types::{TextureIndex, DrawableIndex};
 
   #[allow(non_snake_case)]
   #[derive(Debug)]
@@ -572,11 +573,13 @@ mod js {
 
     pub fn to_aos(&self) -> Vec<core::Drawable> {
       itertools::izip!(self.ids.iter(), self.constant_flagsets.iter(), self.texture_indices.iter(), self.mask_containers.iter(), self.vertex_uv_containers.iter(), self.triangle_index_containers.iter(), self.parent_part_indices.iter())
-        .map(|(id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index)| {
+        .enumerate()
+        .map(|(index, (id, constant_flagset, texture_index, mask_container, vertex_uv_container, triangle_index_container, parent_part_index))| {
           core::Drawable {
             id: id.clone(),
             constant_flagset: *constant_flagset,
-            texture_index: *texture_index,
+            index: DrawableIndex(index as u64),
+            texture_index: TextureIndex(*texture_index as u64),
             masks: mask_container.clone(),
             vertex_uvs: vertex_uv_container.clone(),
             triangle_indices: triangle_index_container.clone(),
