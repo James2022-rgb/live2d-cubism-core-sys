@@ -7,6 +7,7 @@ pub mod model_types;
 
 pub use base_types::{Vector2, Vector4};
 pub use base_types::{MocError, CubismVersion, MocVersion};
+pub use base_types::{TextureIndex, DrawableIndex};
 
 pub use model_types::CanvasInfo;
 pub use model_types::{ParameterType, Parameter};
@@ -143,6 +144,7 @@ impl ModelStatic {
   pub fn parameters(&self) -> &[Parameter] { self.inner.parameters() }
   pub fn parts(&self) -> &[Part] { self.inner.parts() }
   pub fn drawables(&self) -> &[Drawable] { self.inner.drawables() }
+  pub fn get_drawable(&self, index: DrawableIndex) -> Option<&Drawable> { self.inner.get_drawable(index) }
 }
 
 /// Dynamic states of a model.

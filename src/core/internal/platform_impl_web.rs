@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::platform_iface::{Vector2, Vector4};
 use super::platform_iface::{MocError, CubismVersion, MocVersion};
+use super::platform_iface::DrawableIndex;
 use super::platform_iface::{CanvasInfo, Parameter, Part, Drawable};
 use super::platform_iface::DynamicDrawableFlagSet;
 use super::platform_iface::{PlatformCubismCoreInterface, PlatformMocInterface, PlatformModelStaticInterface, PlatformModelDynamicInterface};
@@ -92,6 +93,9 @@ impl PlatformModelStaticInterface for PlatformModelStatic {
   }
   fn drawables(&self) -> &[Drawable] {
     &self.drawables
+  }
+  fn get_drawable(&self, index: DrawableIndex) -> Option<&Drawable> {
+    self.drawables.get(index.as_usize())
   }
 }
 

@@ -346,6 +346,9 @@ impl PlatformModelStaticInterface for PlatformModelStatic {
   fn drawables(&self) -> &[Drawable] {
     &self.drawables
   }
+  fn get_drawable(&self, index: DrawableIndex) -> Option<&Drawable> {
+    self.drawables.get(index.as_usize())
+  }
 }
 
 #[derive(Debug)]

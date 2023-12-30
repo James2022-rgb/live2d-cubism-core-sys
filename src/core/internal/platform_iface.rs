@@ -1,6 +1,7 @@
 
 pub use crate::core::base_types::{Vector2, Vector4};
 pub use crate::core::base_types::{MocError, CubismVersion, MocVersion};
+pub use crate::core::base_types::DrawableIndex;
 pub use crate::core::model_types::CanvasInfo;
 pub use crate::core::model_types::{ParameterType, Parameter};
 pub use crate::core::model_types::Part;
@@ -32,6 +33,7 @@ pub trait PlatformModelStaticInterface {
   fn parameters(&self) -> &[Parameter];
   fn parts(&self) -> &[Part];
   fn drawables(&self) -> &[Drawable];
+  fn get_drawable(&self, index: DrawableIndex) -> Option<&Drawable>;
 }
 
 pub trait PlatformModelDynamicInterface {
