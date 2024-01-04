@@ -43,14 +43,12 @@ impl CubismCore {
   /// Sets a global log handler function to intercept _Live2D® Cubism SDK Core_'s internal log.
   ///
   /// ## Safety
-  /// - Causes a slight memory leak (a heap-allocated closure).
-  /// - Must be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`.
+  /// - MUST be externally synchronized with calls to `csmGetLogFunction` and `csmSetLogFunction`.
   ///   This is a precaution since their threading behavior is not well documented.
   ///
   /// ## Platform-specific
-  /// - **Android:** Unsupported; `libffi-sys-rs` fails to build for Android on Windows.
   /// - **Web:** Unsupported.
-  #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+  #[cfg(not(target_arch = "wasm32"))]
   pub unsafe fn set_log_function<F>(f: F)
   where
     F: FnMut(&str) + Send + 'static,

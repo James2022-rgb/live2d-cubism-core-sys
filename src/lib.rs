@@ -68,11 +68,9 @@ pub mod core_api_tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-      // SAFETY:
-      // 1. We're fine with the memory leak.
-      // 2. We don't directly use `csmGetLogFunction` or `csmSetLogFunction`.
+      // SAFETY: We don't directly use `csmGetLogFunction` or `csmSetLogFunction`.
       unsafe {
-        live2d_core::CubismCore::set_log_function(|message| log::info!("Live2D Cubism Core: {}", message));
+        live2d_core::CubismCore::set_log_function(|message| log::info!("Live2D Cubism Core says: \"{}\"", message));
       }
     }
 

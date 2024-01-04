@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use static_assertions::{assert_eq_align, assert_eq_size};
+use parking_lot::Mutex;
 
 use crate::memory::AlignedStorage;
 use crate::sys::*;
@@ -20,6 +21,39 @@ assert_eq_size!(Vector2, csmVector2);
 assert_eq_align!(Vector4, csmVector4);
 assert_eq_size!(Vector4, csmVector4);
 
+type Trampoline = extern "C" fn(*const core::ffi::c_char);
+type BoxedTrampoline = Box<Trampoline>;
+
+/// This idea is from how [glow](https://github.com/grovesNL/glow/blob/e94890f17ed29e4d01b8e9c6173a735933bc3b6c/src/native.rs#L12-L17) handles debug callbacks.
+///
+/// We store a boxed trampoline (i.e., `Box<Box<extern "C" fn(...)>>`) as a raw pointer, so that it can be
+/// referenced by the C API and later converted back into a `Box` and dropped.
+///
+/// We use a raw pointer here because `Box` aliasing rules are not fully defined, so we can't
+/// guarantee that it's not undefined behavior to keep a `Box` here while it's used as a raw
+/// pointer in the C API.
+///
+struct LogFunctionTrampolineRaw {
+  raw_boxed_boxed_trampoline: *mut Box<Trampoline>,
+  boxed_user_func: Box<dyn FnMut(&str) + Send + 'static>,
+}
+
+unsafe impl Send for LogFunctionTrampolineRaw {}
+unsafe impl Sync for LogFunctionTrampolineRaw {}
+
+impl Drop for LogFunctionTrampolineRaw {
+  fn drop(&mut self) {
+    unsafe {
+      // Convert the `*mut Box<Trampoline>` back into a `Box<Box<Trampoline>>` and drop it.
+      let boxed_boxed_trampoline = Box::from_raw(self.raw_boxed_boxed_trampoline as *mut BoxedTrampoline);
+      let boxed_trampoline = *boxed_boxed_trampoline;
+      drop(boxed_trampoline);
+    }
+  }
+}
+
+static mut S_LOG_FUNCTION_TRAMPOLINE_RAW: Mutex<Option<LogFunctionTrampolineRaw>> = Mutex::new(None);
+
 #[derive(Debug, Default)]
 pub struct PlatformCubismCore {
   _private: (),
@@ -28,25 +62,36 @@ pub struct PlatformCubismCore {
 impl PlatformCubismCoreInterface for PlatformCubismCore {
   type PlatformMoc = PlatformMoc;
 
-  #[cfg(not(target_os = "android"))]
-  unsafe fn set_log_function<F>(mut f: F)
+  unsafe fn set_log_function<F>(f: F)
   where
     F: FnMut(&str) + Send + 'static,
   {
-    let trampoline = Box::new(move |message: *const core::ffi::c_char| {
-      let str = unsafe { core::ffi::CStr::from_ptr(message).to_str().unwrap() };
-      f(str);
-    });
-    let trampoline = Box::leak(trampoline);
+    extern "C" fn trampoline(message_c_str: *const core::ffi::c_char) {
+      let message_str = unsafe { core::ffi::CStr::from_ptr(message_c_str).to_str().unwrap() };
 
-    let trampoline = libffi::high::ClosureMut1::new(trampoline);
-    let &code = trampoline.code_ptr();
-
-    unsafe {
-      csmSetLogFunction(Some(std::mem::transmute(code)));
+      // SAFETY: We use a `Mutex`.
+      let mut log_function_trampoline_raw = unsafe { S_LOG_FUNCTION_TRAMPOLINE_RAW.lock() };
+      if let Some(log_function_trampoline_raw) = log_function_trampoline_raw.as_mut() {
+        (log_function_trampoline_raw.boxed_user_func)(message_str);
+      }
     }
 
-    std::mem::forget(trampoline);
+    let mut log_function_trampoline_raw = S_LOG_FUNCTION_TRAMPOLINE_RAW.lock();
+
+    let boxed_trampoline = BoxedTrampoline::new(trampoline);
+    let boxed_boxed_trampoline = Box::new(boxed_trampoline);
+    let raw_boxed_boxed_trampoline: *mut Box<Trampoline> = Box::into_raw(boxed_boxed_trampoline).cast();
+
+    let boxed_user_func: Box<dyn FnMut(&str) + Send + 'static> = Box::new(f);
+
+    *log_function_trampoline_raw = Some(LogFunctionTrampolineRaw {
+      raw_boxed_boxed_trampoline,
+      boxed_user_func,
+    });
+
+    unsafe {
+      csmSetLogFunction(Some(**raw_boxed_boxed_trampoline));
+    }
   }
 
   fn version(&self) -> CubismVersion {
