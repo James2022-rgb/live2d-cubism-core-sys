@@ -174,6 +174,7 @@ impl ModelDynamic {
   }
 }
 
+#[must_use]
 #[derive(Debug)]
 pub struct ModelDynamicReadLockGuard<'a> {
   inner: RwLockReadGuard<'a, ModelDynamic>,
@@ -186,6 +187,7 @@ impl<'a> std::ops::Deref for ModelDynamicReadLockGuard<'a> {
   }
 }
 
+#[must_use]
 #[derive(Debug)]
 pub struct ModelDynamicWriteLockGuard<'a> {
   inner: RwLockWriteGuard<'a, ModelDynamic>,
