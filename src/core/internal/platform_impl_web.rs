@@ -585,6 +585,7 @@ mod js {
             index: DrawableIndex(index as u64),
             texture_index: TextureIndex(*texture_index as u64),
             masks: mask_container.clone(),
+            vertex_count: vertex_uv_container.len() as u32,
             vertex_uvs: vertex_uv_container.clone(),
             triangle_indices: triangle_index_container.clone(),
             parent_part_index: *parent_part_index,

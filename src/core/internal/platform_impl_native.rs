@@ -259,6 +259,7 @@ impl PlatformMocInterface for PlatformMoc {
             constant_flagset,
             texture_index: TextureIndex(texture_index as u64),
             masks: mask_container.clone(),
+            vertex_count: vertex_uv_container.len() as u32,
             vertex_uvs: vertex_uv_container.clone(),
             triangle_indices: triangle_index_container.clone(),
             parent_part_index,
@@ -287,13 +288,13 @@ impl PlatformMocInterface for PlatformMoc {
     };
 
     let platform_model_dynamic = PlatformModelDynamic {
+       // SAFETY: `csm_model` is behind an `Arc` we own.
       parameter_values: unsafe { std::slice::from_raw_parts_mut(csmGetParameterValues(csm_model), parameter_count) },
       part_opactities: unsafe { std::slice::from_raw_parts_mut(csmGetPartOpacities(csm_model), part_count) },
       drawable_dynamic_flagsets: unsafe { std::slice::from_raw_parts(csmGetDrawableDynamicFlags(csm_model).cast(), drawable_count) },
       drawable_draw_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableDrawOrders(csm_model), drawable_count) },
       drawable_render_orders: unsafe { std::slice::from_raw_parts(csmGetDrawableRenderOrders(csm_model), drawable_count) },
       drawable_opacities: unsafe { std::slice::from_raw_parts(csmGetDrawableOpacities(csm_model), drawable_count) },
-      // SAFETY: `csm_model` is behind an `Arc` we own.
       vertex_position_containers: unsafe {
         VertexPositionContainers::new(csm_model)
       },

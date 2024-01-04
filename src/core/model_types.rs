@@ -1,5 +1,12 @@
 //! Types for rendering a _Live2D®_ model.
 
+pub mod prelude {
+  pub use super::CanvasInfo;
+  pub use super::{ConstantDrawableFlags, ConstantDrawableFlagSet};
+  pub use super::{DynamicDrawableFlags, DynamicDrawableFlagSet};
+  pub use super::Drawable;
+}
+
 use static_assertions::{assert_eq_align, assert_eq_size};
 use num_enum::TryFromPrimitive;
 use flagset::{FlagSet, flags};
@@ -28,7 +35,7 @@ pub struct CanvasInfo {
 /// Parameter type.
 ///
 /// ## Informative
-/// Seems to be purely informative (not required for rendering).
+/// Seems to be purely informative (i.e. not required for rendering).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive)]
 #[repr(i32)]
 pub enum ParameterType {
@@ -127,6 +134,7 @@ pub struct Drawable {
   pub(crate) constant_flagset: ConstantDrawableFlagSet,
   pub(crate) texture_index: TextureIndex,
   pub(crate) masks: Box<[usize]>,
+  pub(crate) vertex_count: u32,
   pub(crate) vertex_uvs: Box<[Vector2]>,
   pub(crate) triangle_indices: Box<[u16]>,
   pub(crate) parent_part_index: Option<usize>,
@@ -144,8 +152,12 @@ impl Drawable {
   pub fn texture_index(&self) -> TextureIndex {
     self.texture_index
   }
+  /// Indices to drawables that mask this drawable.
   pub fn masks(&self) -> &[usize] {
     &self.masks
+  }
+  pub fn vertex_count(&self) -> u32 {
+    self.vertex_count
   }
   pub fn vertex_uvs(&self) -> &[Vector2] {
     &self.vertex_uvs
