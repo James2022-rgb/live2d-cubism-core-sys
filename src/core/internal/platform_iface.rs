@@ -10,7 +10,7 @@ pub use crate::core::model_types::{ConstantDrawableFlagSet, DynamicDrawableFlagS
 pub trait PlatformCubismCoreInterface {
   type PlatformMoc;
 
-  #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+  #[cfg(not(target_arch = "wasm32"))]
   unsafe fn set_log_function<F>(f: F)
   where
     F: FnMut(&str) + Send + 'static;
