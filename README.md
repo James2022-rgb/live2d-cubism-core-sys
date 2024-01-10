@@ -40,7 +40,7 @@ Build target support
 
 Building
 ----------------------------
-An enviroment variable *MUST* be set that that points to an existing _Live2D Cubism SDK_ directory, _for Native_ and _Web_, respectively:
+An enviroment variable *MUST* be set that points to an existing _Live2D Cubism SDK_ directory, _for Native_ and _Web_, respectively:
 |        | Enviroment variable name       |
 | ------ | ------------------------------ |
 | Native | `LIVE2D_CUBISM_SDK_NATIVE_DIR` |
